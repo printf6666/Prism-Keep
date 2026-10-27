@@ -1,0 +1,19 @@
+# 全部文本文件统一使用 LF 换行。
+# 目的：Godot 保存 project.godot / *.import / *.tscn 时总是写 LF，
+# 如果 git 把它检出成 CRLF，文件就会永远显示为"已修改"。
+* text=auto eol=lf
+
+# 二进制资源不做换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ttf binary
+*.otf binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.res binary
+*.scn binary
+*.glb binary
+*.blend binary
