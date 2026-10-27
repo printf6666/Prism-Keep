@@ -22,7 +22,14 @@ const PLAYER_SPEED := 190.0            # 角色移动速度（像素/秒）
 const PLAYER_RADIUS := 9.0
 
 # ---------------- 建筑类型 ----------------
-enum Build { TOWER, MINE, WALL }
+enum Build { TOWER, MINE, WALL, FROST }
+
+# ---------------- 升级 / 拆除 ----------------
+const MAX_LEVEL := 3                # 防御塔最高等级
+const UPGRADE_COST_RATE := 0.6      # 升级费用 = 造价 × 该系数 × 当前等级
+const REFUND_BASE := 0.70           # 拆除返还：1 级的返还比例
+const REFUND_STEP := 0.15           # 等级每高一级，返还比例递减
+const REFUND_MIN := 0.10            # 返还比例下限
 
 # ---------------- 配色（极简低饱和 + 高辨识度）----------------
 const C_BG := Color(0.055, 0.067, 0.090)
@@ -31,6 +38,7 @@ const C_GRID_MAJOR := Color(0.160, 0.200, 0.270)
 const C_MAP_EDGE := Color(0.220, 0.280, 0.380)
 const C_BASE := Color(0.330, 0.800, 1.000)
 const C_TOWER := Color(0.360, 0.860, 0.640)
+const C_FROST := Color(0.620, 0.920, 1.000)
 const C_MINE := Color(1.000, 0.780, 0.280)
 const C_WALL := Color(0.600, 0.650, 0.740)
 const C_TEXT := Color(0.880, 0.920, 0.980)
@@ -72,7 +80,7 @@ static func build_def(kind: int) -> Dictionary:
 				"cost": 50.0,
 				"color": C_TOWER,
 				"scene": "res://scenes/entities/arrow_tower.tscn",
-				"desc": "自动索敌并射击，射程 5 格",
+				"desc": "自动索敌并射击，射程 5 格，可升级至 3 级",
 			}
 		Build.MINE:
 			return {
@@ -92,7 +100,29 @@ static func build_def(kind: int) -> Dictionary:
 				"scene": "res://scenes/entities/wall.tscn",
 				"desc": "阻挡敌人，逼其绕路或强拆",
 			}
+		Build.FROST:
+			return {
+				"name": "寒冰塔",
+				"hotkey": "4",
+				"cost": 70.0,
+				"color": C_FROST,
+				"scene": "res://scenes/entities/frost_tower.tscn",
+				"desc": "冰晶弹命中后冰冻敌人，使其无法移动和攻击，可升级至 3 级",
+			}
 	return {}
+
+
+# ============================================================
+#  升级 / 拆除曲线
+# ============================================================
+static func upgrade_cost(kind: int, level: int) -> float:
+	## 从 level 升到 level + 1 的费用（箭塔：30 / 60，寒冰塔：42 / 84）
+	return build_def(kind)["cost"] * UPGRADE_COST_RATE * float(level)
+
+
+static func refund_ratio(level: int) -> float:
+	## 拆除返还比例：等级越高越低 —— 1 级 70%、2 级 55%、3 级 40%
+	return maxf(REFUND_BASE - REFUND_STEP * float(level - 1), REFUND_MIN)
 
 
 # ============================================================
@@ -103,16 +133,16 @@ static func enemy_def(type: String, wave: int) -> Dictionary:
 	match type:
 		"runner":
 			base = {"hp": 26.0, "speed": 104.0, "dmg": 6.0, "bounty": 4.0,
-				"radius": 8.0, "shape": "triangle", "color": C_ENEMY_RUNNER}
+				"radius": 8.0, "shape": "triangle", "color": C_ENEMY_RUNNER, "freeze_mul": 1.0}
 		"tank":
 			base = {"hp": 115.0, "speed": 40.0, "dmg": 18.0, "bounty": 9.0,
-				"radius": 11.0, "shape": "square", "color": C_ENEMY_TANK}
+				"radius": 11.0, "shape": "square", "color": C_ENEMY_TANK, "freeze_mul": 1.0}
 		"boss":
 			base = {"hp": 460.0, "speed": 30.0, "dmg": 45.0, "bounty": 45.0,
-				"radius": 15.0, "shape": "pentagon", "color": C_ENEMY_BOSS}
+				"radius": 15.0, "shape": "pentagon", "color": C_ENEMY_BOSS, "freeze_mul": 0.3}
 		_:
 			base = {"hp": 40.0, "speed": 62.0, "dmg": 8.0, "bounty": 4.0,
-				"radius": 9.0, "shape": "circle", "color": C_ENEMY_GRUNT}
+				"radius": 9.0, "shape": "circle", "color": C_ENEMY_GRUNT, "freeze_mul": 1.0}
 
 	var w := float(maxi(wave, 1) - 1)
 	var hp_mul := 1.0 + 0.16 * w
@@ -129,6 +159,7 @@ static func enemy_def(type: String, wave: int) -> Dictionary:
 		"shape": base["shape"],
 		"color": base["color"],
 		"interval": 1.0,
+		"freeze_mul": base["freeze_mul"],
 	}
 
 

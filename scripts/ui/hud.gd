@@ -22,6 +22,8 @@ var _sel_hp_text: Label
 var _sel_l1: Label
 var _sel_l2: Label
 var _sel: Node = null
+var _up_btn: Button
+var _sell_btn: Button
 
 var _toast: Label
 var _toast_t := 0.0
@@ -227,15 +229,15 @@ func _toggle_pause() -> void:
 func _build_build_bar() -> void:
 	var bar := HBoxContainer.new()
 	bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	bar.offset_left = -270.0
-	bar.offset_right = 270.0
+	bar.offset_left = -330.0
+	bar.offset_right = 330.0
 	bar.offset_top = -112.0
 	bar.offset_bottom = -26.0
 	bar.alignment = BoxContainer.ALIGNMENT_CENTER
 	bar.add_theme_constant_override("separation", 12)
 	_root.add_child(bar)
 
-	for kind in [GameConfig.Build.TOWER, GameConfig.Build.MINE, GameConfig.Build.WALL]:
+	for kind in [GameConfig.Build.TOWER, GameConfig.Build.MINE, GameConfig.Build.WALL, GameConfig.Build.FROST]:
 		var def := GameConfig.build_def(kind)
 		var b := _mk_button("", 156.0, 78.0)
 		b.icon = Art.build_icon(kind, def["color"], 26)
@@ -319,6 +321,22 @@ func _build_sel_panel() -> void:
 	_sel_l2.add_theme_color_override("font_color", GameConfig.C_TEXT_DIM)
 	vb.add_child(_sel_l2)
 
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	vb.add_child(row)
+
+	_up_btn = _mk_button("升级", 0.0, 34.0)
+	_up_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_up_btn.add_theme_font_size_override("font_size", 15)
+	_up_btn.pressed.connect(_on_upgrade_pressed)
+	row.add_child(_up_btn)
+
+	_sell_btn = _mk_button("拆除", 0.0, 34.0)
+	_sell_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_sell_btn.add_theme_font_size_override("font_size", 15)
+	_sell_btn.pressed.connect(_on_demolish_pressed)
+	row.add_child(_sell_btn)
+
 
 func _on_building_selected(b) -> void:
 	_sel = b
@@ -330,21 +348,30 @@ func _on_building_selected(b) -> void:
 	_sel_panel.visible = true
 	match int(b.kind):
 		GameConfig.Build.TOWER:
-			_sel_name.text = "箭塔"
+			_sel_name.text = "箭塔" + _lv_text(b)
 			_sel_name.add_theme_color_override("font_color", GameConfig.C_TOWER)
 			_sel_l1.text = "攻击力 %d      每秒 %d" % [int(b.damage), int(round(b.damage / b.fire_interval))]
 			_sel_l2.text = "射程 %d 格" % int(b.range_cells)
 		GameConfig.Build.MINE:
-			_sel_name.text = "金矿"
+			_sel_name.text = "金矿" + _lv_text(b)
 			_sel_name.add_theme_color_override("font_color", GameConfig.C_MINE)
 			_sel_l1.text = "产出 %d 金 / %d 秒" % [int(b.income), int(b.interval)]
 			_sel_l2.text = "经济来源，被拆会断收入"
+		GameConfig.Build.FROST:
+			_sel_name.text = "寒冰塔" + _lv_text(b)
+			_sel_name.add_theme_color_override("font_color", GameConfig.C_FROST)
+			_sel_l1.text = "攻击力 %d      冰冻 %.1f 秒" % [int(b.damage), b.freeze_time]
+			_sel_l2.text = "射程 %d 格，冻结期间无法行动" % int(b.range_cells)
 		_:
-			_sel_name.text = "围墙"
+			_sel_name.text = "围墙" + _lv_text(b)
 			_sel_name.add_theme_color_override("font_color", GameConfig.C_WALL)
 			_sel_l1.text = "阻挡敌人前进"
 			_sel_l2.text = "被拆后敌人立刻改道"
 	_refresh_sel()
+
+
+func _lv_text(b) -> String:
+	return "" if int(b.level) <= 1 else "  Lv.%d" % int(b.level)
 
 
 func _refresh_sel() -> void:
@@ -370,6 +397,28 @@ func _refresh_sel() -> void:
 	elif p <= 0.55:
 		c = Color(1.0, 0.78, 0.28)
 	_sel_hp_fill.bg_color = c
+
+	# 升级 / 拆除按钮（金币变化时可用状态实时刷新）
+	var up: bool = _sel.can_upgrade()
+	_up_btn.visible = up
+	if up:
+		var cost: float = _sel.upgrade_cost()
+		_up_btn.text = "升级 %d" % int(cost)
+		_up_btn.disabled = not GameState.can_afford(cost)
+	_sell_btn.text = "拆除 +%d" % int(roundf(_sel.refund_value()))
+
+
+func _on_upgrade_pressed() -> void:
+	if _sel == null or not is_instance_valid(_sel):
+		return
+	if _sel.upgrade():
+		_on_building_selected(_sel)   # 升级后按新等级重填属性文本
+
+
+func _on_demolish_pressed() -> void:
+	if _sel == null or not is_instance_valid(_sel):
+		return
+	_sel.demolish()
 
 
 # ============================================================

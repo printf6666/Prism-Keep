@@ -20,8 +20,16 @@ func _ready() -> void:
 	tint = GameConfig.C_TOWER
 	max_hp = 260.0
 	hp = max_hp
+	max_level = GameConfig.MAX_LEVEL
 	_cd = randf() * 0.2
 	_scan_cd = randf() * 0.1
+
+
+func _on_upgraded() -> void:
+	super._on_upgraded()
+	damage *= 1.5
+	range_cells += 0.5
+	_recoil = 6.0
 
 
 func _process(delta: float) -> void:
@@ -99,3 +107,4 @@ func _draw() -> void:
 	draw_circle(Vector2.ZERO, 4.0, col.lightened(0.45))
 
 	_draw_hp_bar(24.0, -half - 8.0)
+	super._draw()

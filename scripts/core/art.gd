@@ -25,6 +25,10 @@ static func build_icon(kind: int, color: Color, out_size := 28) -> ImageTexture:
 			_fill(img, _rect(0.12, 0.30, 0.88, 0.72), color)
 			_fill(img, _rect(0.12, 0.47, 0.88, 0.51), Color(0, 0, 0, 0.45))
 			_fill(img, _rect(0.46, 0.30, 0.52, 0.47), Color(0, 0, 0, 0.45))
+		GameConfig.Build.FROST:
+			# 菱形冰晶 + 内部镂空
+			_fill(img, [Vector2(0.5, 0.08), Vector2(0.84, 0.5), Vector2(0.5, 0.92), Vector2(0.16, 0.5)], color)
+			_fill(img, [Vector2(0.5, 0.34), Vector2(0.66, 0.5), Vector2(0.5, 0.66), Vector2(0.34, 0.5)], Color(0, 0, 0, 0))
 
 	img.resize(out_size, out_size, Image.INTERPOLATE_LANCZOS)
 	return ImageTexture.create_from_image(img)

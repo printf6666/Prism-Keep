@@ -18,6 +18,7 @@ var bounty := 4.0
 var radius := 9.0
 var color := Color(1, 0.4, 0.4)
 var attack_interval := 1.0
+var freeze_mul := 1.0
 
 var dead := false
 
@@ -27,6 +28,7 @@ var _face := 0.0
 var _attack_cd := 0.0
 var _hit := 0.0
 var _wobble := 0.0
+var freeze_left := 0.0
 
 
 func _ready() -> void:
@@ -45,9 +47,18 @@ func setup(d: Dictionary) -> void:
 	radius = d["radius"]
 	color = d["color"]
 	attack_interval = d["interval"]
+	freeze_mul = d.get("freeze_mul", 1.0)
 	_offset = Vector2(randf_range(-0.26, 0.26), randf_range(-0.26, 0.26)) * GameConfig.CELL
 	_attack_cd = randf() * attack_interval
 	_cell = Board.cell_of(position)
+
+
+func apply_freeze(duration: float) -> void:
+	## 被冰冻：冻结期间无法移动与攻击，重复命中只取更长的冻结时间
+	if dead:
+		return
+	freeze_left = maxf(freeze_left, duration * freeze_mul)
+	queue_redraw()
 
 
 func _process(delta: float) -> void:
@@ -55,6 +66,13 @@ func _process(delta: float) -> void:
 		return
 
 	_hit = maxf(0.0, _hit - delta * 4.0)
+
+	# 冰冻中：原地冻结，不移动也不攻击
+	if freeze_left > 0.0:
+		freeze_left = maxf(0.0, freeze_left - delta)
+		queue_redraw()
+		return
+
 	_attack_cd -= delta
 	_wobble += delta * 6.0
 
@@ -125,7 +143,7 @@ func _adjacent_tower(cell: Vector2i):
 		var b = Board.get_building(c)
 		if b == null or not is_instance_valid(b):
 			continue
-		if int(b.kind) != GameConfig.Build.TOWER:
+		if int(b.kind) != GameConfig.Build.TOWER and int(b.kind) != GameConfig.Build.FROST:
 			continue
 		var d: float = global_position.distance_squared_to(b.global_position)
 		if d < best_d:
@@ -173,12 +191,17 @@ func _die() -> void:
 #  绘制
 # ============================================================
 func _draw() -> void:
+	var frozen := freeze_left > 0.0
 	var col := color
 	if _hit > 0.0:
 		col = col.lerp(Color(1, 1, 1), clampf(_hit, 0.0, 0.85))
+	if frozen:
+		col = col.lerp(Color(0.72, 0.92, 1.0), 0.55)
 
-	# 呼吸感：轻微缩放
-	var s := 1.0 + sin(_wobble) * 0.05
+	# 呼吸感：轻微缩放（冻结时定住）
+	var s := 1.0
+	if not frozen:
+		s = 1.0 + sin(_wobble) * 0.05
 	draw_set_transform(Vector2.ZERO, _face, Vector2(s, s))
 	_draw_shape(radius * 1.22, col.darkened(0.55))
 	_draw_shape(radius, col)
@@ -186,6 +209,12 @@ func _draw() -> void:
 		draw_arc(Vector2.ZERO, radius * 0.55, 0.0, TAU, 16,
 				Color(1, 1, 1, 0.55), 1.5, true)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	# 冰环：六边形冰壳
+	if frozen:
+		var a := clampf(freeze_left, 0.0, 0.4) / 0.4
+		draw_arc(Vector2.ZERO, radius * 1.6, 0.0, TAU, 6,
+				Color(0.72, 0.92, 1.0, 0.35 + a * 0.55), 1.5, true)
 
 	# 血条
 	if hp < max_hp:

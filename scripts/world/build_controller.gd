@@ -1,8 +1,8 @@
 extends Node2D
 ## 建造交互 + 建筑查看
 ##   · 选中建筑 -> 网格幽灵预览 -> 左键落子；右键/ESC 取消
-##   · 未处于建造模式时，左键点已部署的建筑 = 查看它的血量 / 攻击力
-##   · 悬停或选中箭塔时显示射程圈
+##   · 未处于建造模式时，左键点已部署的建筑 = 查看属性，可在详情面板升级 / 拆除
+##   · 悬停或选中塔类建筑（箭塔 / 寒冰塔）时显示射程圈
 
 var selected := -1          # 当前要建造的类型，-1 = 非建造模式
 var hover := Vector2i(-1, -1)
@@ -53,6 +53,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				GameState.build_mode_changed.emit(GameConfig.Build.MINE)
 			KEY_3:
 				GameState.build_mode_changed.emit(GameConfig.Build.WALL)
+			KEY_4:
+				GameState.build_mode_changed.emit(GameConfig.Build.FROST)
 			KEY_ESCAPE:
 				GameState.build_mode_changed.emit(-1)
 				_clear_selection()
@@ -130,9 +132,9 @@ func _draw() -> void:
 		draw_rect(rect, Color(col.r, col.g, col.b, 0.22), true)
 		draw_rect(rect, col, false, 2.0)
 
-		if selected == GameConfig.Build.TOWER:
-			draw_arc(c, 5.0 * cell, 0.0, TAU, 64,
-					Color(col.r, col.g, col.b, 0.45), 1.5, true)
+		if selected == GameConfig.Build.TOWER or selected == GameConfig.Build.FROST:
+			draw_arc(c, 5.0 * cell if selected == GameConfig.Build.TOWER else 4.0 * cell,
+					0.0, TAU, 64, Color(col.r, col.g, col.b, 0.45), 1.5, true)
 
 	# 选中高亮
 	if _sel != null and is_instance_valid(_sel):
@@ -141,15 +143,16 @@ func _draw() -> void:
 		draw_rect(r, Color(1, 1, 1, 0.12), true)
 		draw_rect(r, Color(1, 1, 1, 0.85), false, 2.0)
 		_draw_corners(p, half + 3.0, Color(1, 1, 1, 0.9))
-		if int(_sel.kind) == GameConfig.Build.TOWER:
+		if int(_sel.kind) == GameConfig.Build.TOWER or int(_sel.kind) == GameConfig.Build.FROST:
 			draw_arc(p, float(_sel.range_cells) * cell, 0.0, TAU, 64,
-					Color(GameConfig.C_TOWER.r, GameConfig.C_TOWER.g, GameConfig.C_TOWER.b, 0.45), 1.5, true)
+					Color(_sel.tint.r, _sel.tint.g, _sel.tint.b, 0.45), 1.5, true)
 
-	# 悬停已建成的箭塔 -> 显示其射程
+	# 悬停已建成的塔 -> 显示其射程
 	var hb = Board.get_building(hover)
-	if hb != null and is_instance_valid(hb) and hb != _sel and int(hb.kind) == GameConfig.Build.TOWER:
+	if hb != null and is_instance_valid(hb) and hb != _sel \
+			and (int(hb.kind) == GameConfig.Build.TOWER or int(hb.kind) == GameConfig.Build.FROST):
 		draw_arc(hb.global_position, float(hb.range_cells) * cell, 0.0, TAU, 64,
-				Color(GameConfig.C_TOWER.r, GameConfig.C_TOWER.g, GameConfig.C_TOWER.b, 0.35), 1.5, true)
+				Color(hb.tint.r, hb.tint.g, hb.tint.b, 0.35), 1.5, true)
 
 
 func _draw_corners(p: Vector2, r: float, col: Color) -> void:
