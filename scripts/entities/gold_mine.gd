@@ -2,7 +2,7 @@ extends Building
 ## 金矿：周期性产出金币，产出瞬间有一圈脉冲反馈
 
 var interval := 2.0
-var income := 10.0
+var income := 3.0
 
 var _t := 0.0
 var _pulse := 0.0
@@ -24,7 +24,7 @@ func _process(delta: float) -> void:
 	if _t <= 0.0:
 		_t = interval
 		_pulse = 1.0
-		GameState.add_gold(income)
+		GameState.add_gold(income + GameState.mine_income_bonus)
 
 	queue_redraw()
 

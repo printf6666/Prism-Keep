@@ -12,6 +12,8 @@ signal build_mode_changed(kind: int)
 signal next_wave_pressed
 signal speed_changed(mult: float)
 signal building_selected(building)   # 点击已部署建筑时发出，null 表示取消选中
+signal skill_changed(value: int)     # 技能点变化
+signal retool_menu_toggled(open: bool)
 
 var gold := 0.0
 var base_hp := 0.0
@@ -19,6 +21,15 @@ var base_hp_max := 0.0
 var wave := 0
 var total_waves := GameConfig.TOTAL_WAVES
 var finished := false
+
+# ---- 技能点与改造车间全局加成 ----
+var skill_points := 0
+var buff_levels: Array = [0, 0, 0, 0]
+var tower_dmg_mul := 1.0     # 加成 1：防御塔攻击力倍率
+var wall_hp_mul := 1.0       # 加成 2：围墙 / 路障血量倍率
+var mine_income_bonus := 0.0 # 加成 3：金矿每次产出额外金币
+var burn_bonus := 0.0        # 加成 4：灼烧额外比例（岩浆中翻倍）
+var retool_menu_open := false
 
 
 func reset() -> void:
@@ -28,9 +39,17 @@ func reset() -> void:
 	wave = 0
 	total_waves = GameConfig.TOTAL_WAVES
 	finished = false
+	skill_points = 0
+	buff_levels = [0, 0, 0, 0]
+	tower_dmg_mul = 1.0
+	wall_hp_mul = 1.0
+	mine_income_bonus = 0.0
+	burn_bonus = 0.0
+	retool_menu_open = false
 	gold_changed.emit(gold)
 	base_changed.emit(base_hp, base_hp_max)
 	wave_changed.emit(wave, total_waves)
+	skill_changed.emit(skill_points)
 
 
 func add_gold(v: float) -> void:
@@ -38,6 +57,54 @@ func add_gold(v: float) -> void:
 		return
 	gold += v
 	gold_changed.emit(gold)
+
+
+func add_skill_points(v: int) -> void:
+	if finished:
+		return
+	skill_points += v
+	skill_changed.emit(skill_points)
+
+
+func buff_level(i: int) -> int:
+	return buff_levels[i]
+
+
+func buy_buff(i: int) -> bool:
+	## 用技能点购买改造车间加成，返回是否成功
+	var def: Dictionary = GameConfig.RETOOL_BUFFS[i]
+	var lv: int = buff_levels[i]
+	if lv >= int(def["max_lv"]):
+		return false
+	var cost: int = GameConfig.buff_cost(i, lv)
+	if skill_points < cost:
+		return false
+	skill_points -= cost
+	buff_levels[i] = lv + 1
+	match i:
+		0:
+			tower_dmg_mul = 1.0 + 0.1 * buff_levels[0]
+		1:
+			var new_mul: float = 1.0 + 0.2 * buff_levels[1]
+			var ratio: float = new_mul / wall_hp_mul
+			for b in Board.buildings.values():
+				if is_instance_valid(b) and b.is_wall:
+					b.max_hp *= ratio
+					b.hp = minf(b.hp * ratio, b.max_hp)
+			wall_hp_mul = new_mul
+		2:
+			mine_income_bonus = buff_levels[2] * 0.5
+		3:
+			burn_bonus = buff_levels[3] * 0.005
+	skill_changed.emit(skill_points)
+	return true
+
+
+func set_retool_menu(open: bool) -> void:
+	if retool_menu_open == open:
+		return
+	retool_menu_open = open
+	retool_menu_toggled.emit(open)
 
 
 func can_afford(v: float) -> bool:

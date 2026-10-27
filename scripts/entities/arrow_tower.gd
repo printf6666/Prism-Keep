@@ -4,9 +4,13 @@ extends Building
 const PROJ_SCENE := preload("res://scenes/entities/projectile.tscn")
 
 var range_cells := 5.0
-var damage := 14.0
+var damage := 19.0
 var fire_interval := 0.5
 var proj_speed := 640.0
+
+var _base_damage := 0.0   # 1 级基础值（改造换分支时按等级重新成长）
+var _base_range := 0.0
+var _base_interval := 0.0
 
 var _cd := 0.0
 var _scan_cd := 0.0
@@ -21,6 +25,9 @@ func _ready() -> void:
 	max_hp = 260.0
 	hp = max_hp
 	max_level = GameConfig.MAX_LEVEL
+	_base_damage = damage
+	_base_range = range_cells
+	_base_interval = fire_interval
 	_cd = randf() * 0.2
 	_scan_cd = randf() * 0.1
 
@@ -28,8 +35,87 @@ func _ready() -> void:
 func _on_upgraded() -> void:
 	super._on_upgraded()
 	damage *= 1.5
-	range_cells += 0.5
+	range_cells += 1.0
 	_recoil = 6.0
+
+
+# ============================================================
+#  满级分支：快速射击 / 大范围射击
+# ============================================================
+func can_branch() -> bool:
+	## 3 级且尚未分支时可选路线（分支即改 kind，天然防重复分支）
+	return level >= max_level and kind == GameConfig.Build.TOWER
+
+
+func branch_options() -> Array:
+	return [GameConfig.Build.TOWER_RAPID, GameConfig.Build.TOWER_RANGE]
+
+
+func branch_cost() -> float:
+	return GameConfig.BRANCH_COST
+
+
+func branch_to(new_kind: int) -> bool:
+	## 二选一定型：改 kind / 配色 / 数值并封顶，之后不可再升级
+	if not can_branch():
+		return false
+	if not branch_options().has(new_kind):
+		return false
+	if not GameState.try_spend(GameConfig.BRANCH_COST):
+		return false
+
+	invested += GameConfig.BRANCH_COST
+	max_level = level
+	_apply_branch(new_kind)
+	_up_pulse = 1.0
+	_recoil = 6.0
+	queue_redraw()
+	return true
+
+
+func _apply_branch(new_kind: int) -> void:
+	## 按分支重置数值：先回到基础值按等级成长，再应用分支特性（改造换分支也走这里）
+	kind = new_kind
+	damage = _base_damage * pow(1.5, float(level - 1))
+	range_cells = _base_range + float(level - 1)
+	fire_interval = _base_interval
+	match new_kind:
+		GameConfig.Build.TOWER_RAPID:
+			tint = GameConfig.C_TOWER_RAPID
+			fire_interval = GameConfig.RAPID_INTERVAL
+			_cd = 0.0
+		GameConfig.Build.TOWER_RANGE:
+			tint = GameConfig.C_TOWER_RANGE
+			damage = ceilf(damage * GameConfig.RANGE_BRANCH_DMG_MUL)
+			range_cells = GameConfig.RANGE_BRANCH_RANGE
+
+
+func can_retrofit() -> bool:
+	## 已定型且场上存在改造车间时可改为另一分支
+	return kind != GameConfig.Build.TOWER and level >= max_level \
+			and Board.has_kind(GameConfig.Build.RETOOL)
+
+
+func retrofit_options() -> Array:
+	var opts: Array = []
+	for k in branch_options():
+		if k != kind:
+			opts.append(k)
+	return opts
+
+
+func retrofit_to(new_kind: int) -> bool:
+	## 付费改为另一分支（保留等级，费用 = 分支定型价）
+	if not can_retrofit() or not retrofit_options().has(new_kind):
+		return false
+	if not GameState.try_spend(retrofit_cost()):
+		return false
+	invested += retrofit_cost()
+	_apply_branch(new_kind)
+	_up_pulse = 1.0
+	_recoil = 6.0
+	queue_redraw()
+	return true
 
 
 func _process(delta: float) -> void:
@@ -80,7 +166,7 @@ func _shoot(e: Node2D) -> void:
 		return
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position + Vector2(cos(_aim), sin(_aim)) * 12.0
-	p.setup(e, damage, proj_speed, tint)
+	p.setup(e, damage * GameState.tower_dmg_mul, proj_speed, tint)
 	layer.add_child(p)
 	_recoil = 5.0
 
@@ -94,16 +180,29 @@ func _draw() -> void:
 	draw_rect(Rect2(-half, -half, half * 2.0, half * 2.0), col.darkened(0.25), false, 2.0)
 	draw_circle(Vector2.ZERO, half * 0.62, Color(col.r, col.g, col.b, 0.16))
 
-	# 炮塔（三角，朝目标方向，射击时后坐）
+	# 炮塔（朝目标方向，射击时后坐；分支外观：速射双联管 / 远程长管）
 	var dir := Vector2(cos(_aim), sin(_aim))
 	var perp := Vector2(-dir.y, dir.x)
-	var tip := dir * (13.0 - _recoil)
-	var poly := PackedVector2Array([
-		tip,
-		perp * 7.5 - dir * 5.0,
-		-perp * 7.5 - dir * 5.0,
-	])
-	draw_colored_polygon(poly, col)
+	if kind == GameConfig.Build.TOWER_RAPID:
+		for s: float in [-1.0, 1.0]:
+			var off: Vector2 = perp * 3.6 * s
+			draw_colored_polygon(PackedVector2Array([
+				dir * (10.0 - _recoil) + off,
+				off + perp * 2.4 - dir * 4.0,
+				off - perp * 2.4 - dir * 4.0,
+			]), col)
+	else:
+		var barrel := 13.0
+		var half_w := 7.5
+		if kind == GameConfig.Build.TOWER_RANGE:
+			barrel = 16.0
+			half_w = 6.0
+		var tip := dir * (barrel - _recoil)
+		draw_colored_polygon(PackedVector2Array([
+			tip,
+			perp * half_w - dir * 5.0,
+			-perp * half_w - dir * 5.0,
+		]), col)
 	draw_circle(Vector2.ZERO, 4.0, col.lightened(0.45))
 
 	_draw_hp_bar(24.0, -half - 8.0)

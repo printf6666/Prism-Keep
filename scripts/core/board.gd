@@ -21,6 +21,7 @@ const DY := [0, 0, 1, -1, 1, -1, 1, -1]
 
 var buildings: Dictionary = {}   # idx -> Building 节点
 var walls: Dictionary = {}       # idx -> true（buildings 的子集）
+var ores: Dictionary = {}        # idx -> true（矿山格，金矿只能建在这里）
 var dist_normal := PackedFloat32Array()
 var dist_free := PackedFloat32Array()
 
@@ -89,18 +90,55 @@ func is_wall_cell(c: Vector2i) -> bool:
 	return walls.has(idx(c.x, c.y))
 
 
-func register(b: Node, c: Vector2i) -> void:
-	var i := idx(c.x, c.y)
-	buildings[i] = b
-	if b.is_wall:
-		walls[i] = true
+## 是否为矿山格（金矿的唯一合法落点；只是地形标记，不阻挡通行）
+func is_ore(c: Vector2i) -> bool:
+	if not in_bounds(c.x, c.y):
+		return false
+	return ores.has(idx(c.x, c.y))
+
+
+## 区域内所有格子是否可建（多格建筑放置用）
+func is_free_area(top_left: Vector2i, size: Vector2i) -> bool:
+	for dy in size.y:
+		for dx in size.x:
+			if not is_free(top_left + Vector2i(dx, dy)):
+				return false
+	return true
+
+
+func ore_cells() -> Array:
+	var out: Array = []
+	for i in ores:
+		out.append(Vector2i(i % W, int(i / float(W))))
+	return out
+
+
+## 场上是否存在某类建筑（改造车间等条件判定用）
+func has_kind(k: int) -> bool:
+	for b in buildings.values():
+		if is_instance_valid(b) and int(b.kind) == k:
+			return true
+	return false
+
+
+func register(b: Node, top_left: Vector2i, size: Vector2i = Vector2i.ONE) -> void:
+	## 登记（支持多格建筑：每个格子都指向同一建筑节点）
+	for dy in size.y:
+		for dx in size.x:
+			var c := top_left + Vector2i(dx, dy)
+			var i := idx(c.x, c.y)
+			buildings[i] = b
+			if b.is_wall:
+				walls[i] = true
 	mark_dirty()
 
 
-func unregister(c: Vector2i) -> void:
-	var i := idx(c.x, c.y)
-	buildings.erase(i)
-	walls.erase(i)
+func unregister_building(b) -> void:
+	## 注销建筑占用的全部格子
+	for c in b.occupied_cells():
+		var i := idx(c.x, c.y)
+		buildings.erase(i)
+		walls.erase(i)
 	mark_dirty()
 
 
@@ -113,8 +151,21 @@ func mark_dirty() -> void:
 func reset() -> void:
 	buildings.clear()
 	walls.clear()
+	generate_ores()
 	_dirty = false
 	rebuild()
+
+
+## 每局随机生成矿山格：避开大本营，其余位置完全随机（数量见 GameConfig.ORE_COUNT）
+func generate_ores() -> void:
+	ores.clear()
+	var guard := 0
+	while ores.size() < GameConfig.ORE_COUNT and guard < 4000:
+		guard += 1
+		var c := Vector2i(randi_range(0, W - 1), randi_range(0, H - 1))
+		if GameConfig.is_base_cell(c):
+			continue
+		ores[idx(c.x, c.y)] = true
 
 
 # ============================================================

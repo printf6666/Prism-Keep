@@ -4,9 +4,11 @@ extends Node2D
 
 const FX_SCENE := preload("res://scenes/fx/burst_fx.tscn")
 
-var cell := Vector2i.ZERO
+var cell := Vector2i.ZERO      # 占格左上角
+var footprint := Vector2i.ONE  # 占地格数（改造车间 5×5）
 var kind := 0
 var is_wall := false
+var barricade := false  # 路障标记（围墙变体，add_child 前设置，_ready 按它初始化）
 var max_hp := 100.0
 var hp := 100.0
 var tint := Color.WHITE
@@ -19,10 +21,18 @@ var _up_pulse := 0.0
 
 
 func place(c: Vector2i) -> void:
-	cell = c
-	position = Board.cell_to_world(c)
+	cell = c   # 左上角格
+	position = Board.cell_to_world(c) + Vector2(footprint - Vector2i.ONE) * (GameConfig.CELL * 0.5)
 	invested = GameConfig.build_def(kind)["cost"]
-	Board.register(self, c)
+	Board.register(self, c, footprint)
+
+
+func occupied_cells() -> Array:
+	var out: Array = []
+	for dy in footprint.y:
+		for dx in footprint.x:
+			out.append(cell + Vector2i(dx, dy))
+	return out
 
 
 func take_damage(amount: float) -> void:
@@ -49,6 +59,45 @@ func upgrade_cost() -> float:
 func refund_value() -> float:
 	## 现在拆除能拿回多少金币
 	return GameConfig.refund_ratio(level) * invested
+
+
+func can_branch() -> bool:
+	## 满级后能否分支定型（默认不可；箭塔 / 炮塔子类覆写）
+	return false
+
+
+func branch_options() -> Array:
+	## 分支可选的类型列表（默认无）
+	return []
+
+
+func branch_cost() -> float:
+	return 0.0
+
+
+func branch_to(_new_kind: int) -> bool:
+	## 分支定型：改 kind / 外观 / 数值，之后不可再升级；默认不可用
+	return false
+
+
+func can_retrofit() -> bool:
+	## 已定型分支且场上存在改造车间时可改为另一分支（子类覆写）
+	return false
+
+
+func retrofit_options() -> Array:
+	## 可改造成的分支类型列表（默认无）
+	return []
+
+
+func retrofit_cost() -> float:
+	## 改造费用默认与分支定型相同
+	return branch_cost()
+
+
+func retrofit_to(_new_kind: int) -> bool:
+	## 付费改为另一分支（保留等级，数值按新分支重置）；默认不可用
+	return false
 
 
 func upgrade() -> bool:
@@ -91,7 +140,7 @@ func _process(delta: float) -> void:
 
 
 func _destroy() -> void:
-	Board.unregister(cell)
+	Board.unregister_building(self)
 	_spawn_fx()
 	queue_free()
 

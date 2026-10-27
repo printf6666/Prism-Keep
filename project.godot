@@ -1,6 +1,6 @@
 ; Engine configuration file.
-; It's best edited using the editor UI and not directly,
-; since the parameters that go here are not all obvious.
+; It's best edited using the editor UI, and the parameters
+; are not obvious here, so prefer the editor over hand editing.
 ;
 ; Format:
 ;   [section] ; section goes between []

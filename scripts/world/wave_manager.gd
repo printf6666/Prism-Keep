@@ -55,6 +55,11 @@ func _process(delta: float) -> void:
 
 func _on_skip() -> void:
 	if state == St.PREP and not GameState.finished:
+		# 提前开战的奖励：剩余准备秒数 × 10（与倒计时显示一致，向上取整）
+		var reward := int(ceil(maxf(prep_left, 0.0))) * GameConfig.SKIP_BONUS_RATE
+		if reward > 0:
+			GameState.add_gold(float(reward))
+			GameState.notice.emit("提前迎战，奖励 %d 金" % reward)
 		_start_wave()
 
 
