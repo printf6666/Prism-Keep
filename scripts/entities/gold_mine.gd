@@ -16,6 +16,12 @@ func _ready() -> void:
 	_t = interval * randf_range(0.4, 1.0)
 
 
+func place(c: Vector2i) -> void:
+	super.place(c)
+	if Board.is_rich_ore(c):
+		income *= GameConfig.RICH_INCOME_MUL   # 大金矿：产出翻倍
+
+
 func _process(delta: float) -> void:
 	super._process(delta)
 	_pulse = maxf(0.0, _pulse - delta * 2.2)
@@ -39,21 +45,28 @@ func _ngon(n: int, r: float, phase := 0.0) -> PackedVector2Array:
 
 func _draw() -> void:
 	var col := _body_color(tint)
-	var half := GameConfig.CELL * 0.5 - 4.0
+	var rich := Board.is_rich_ore(cell)
+	var half := GameConfig.CELL * 0.5 - (3.0 if rich else 4.0)
 
 	draw_rect(Rect2(-half, -half, half * 2.0, half * 2.0), Color(0.22, 0.18, 0.08), true)
 	draw_rect(Rect2(-half, -half, half * 2.0, half * 2.0), col.darkened(0.25), false, 2.0)
 
-	# 六边形矿体
-	var hex := _ngon(6, 10.0, -PI * 0.5)
-	draw_colored_polygon(hex, col.darkened(0.25))
+	# 六边形矿体（大金矿上更大更亮）
+	var body_r := 12.0 if rich else 10.0
+	var hex := _ngon(6, body_r, -PI * 0.5)
+	draw_colored_polygon(hex, col.darkened(0.25) if not rich else col)
 	var outline := hex.duplicate()
 	outline.append(hex[0])
-	draw_polyline(outline, col, 2.0, true)
+	draw_polyline(outline, col.lightened(0.2 if rich else 0.0), 2.0, true)
+
+	# 大金矿标记：金色光环
+	if rich:
+		draw_arc(Vector2.ZERO, body_r + 3.5, 0.0, TAU, 20,
+				Color(col.r, col.g, col.b, 0.6), 1.5, true)
 
 	# 产出脉冲
 	if _pulse > 0.0:
-		var r := 10.0 + (1.0 - _pulse) * 12.0
+		var r := body_r + (1.0 - _pulse) * 12.0
 		draw_arc(Vector2.ZERO, r, 0.0, TAU, 24,
 				Color(col.r, col.g, col.b, _pulse * 0.8), 2.0, true)
 	draw_circle(Vector2.ZERO, 3.0 + _pulse * 2.0, col.lightened(0.5))

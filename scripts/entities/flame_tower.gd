@@ -222,7 +222,7 @@ func _cone_attack() -> void:
 			continue
 		if absf(wrapf(to.angle() - _aim, -PI, PI)) > half:
 			continue
-		e.take_damage(damage * GameState.tower_dmg_mul)
+		e.take_damage(damage * GameState.building_dmg_mul)
 		e.apply_burn(GameConfig.BURN_PCT + GameState.burn_bonus, GameConfig.BURN_TIME)
 
 

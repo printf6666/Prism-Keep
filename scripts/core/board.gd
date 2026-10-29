@@ -2,8 +2,9 @@ extends Node
 ## 棋盘数据 + 流场寻路（自动加载单例：Board）
 ##
 ## 两张流场：
-##   dist_normal —— 所有建筑都挡路。敌人的默认路线，因此敌人天然“优先奔向大本营”，
-##                  有路时绝不会去碰沿路的塔和墙。
+##   dist_normal —— 建筑挡路，但路障（barricade）例外：路障对寻路视作“空地”，
+##                  不参与阻挡。因此敌人天然“优先奔向大本营”，有路时绝不会去碰沿路的塔和墙；
+##                  而当路被路障堵死时，敌人依旧会走那条路，走到跟前再把路障拆掉。
 ##   dist_free   —— 什么都不挡。大本营被围死时的兜底：敌人直扑大本营，
 ##                  挡在路上的建筑（墙 / 塔）就当场拆掉。
 ##
@@ -21,7 +22,9 @@ const DY := [0, 0, 1, -1, 1, -1, 1, -1]
 
 var buildings: Dictionary = {}   # idx -> Building 节点
 var walls: Dictionary = {}       # idx -> true（buildings 的子集）
+var barricades: Dictionary = {}  # idx -> true（walls 的子集：路障，寻路时不阻挡）
 var ores: Dictionary = {}        # idx -> true（矿山格，金矿只能建在这里）
+var rich_ores: Dictionary = {}   # idx -> true（大金矿：产金翻倍）
 var dist_normal := PackedFloat32Array()
 var dist_free := PackedFloat32Array()
 
@@ -90,11 +93,30 @@ func is_wall_cell(c: Vector2i) -> bool:
 	return walls.has(idx(c.x, c.y))
 
 
+## 是否为路障格：占格阻挡移动，但寻路时按空地处理
+func is_barricade_cell(c: Vector2i) -> bool:
+	if not in_bounds(c.x, c.y):
+		return false
+	return barricades.has(idx(c.x, c.y))
+
+
+## 该格是否阻挡“绕建筑”的默认路线（路障不阻挡，只在实际移动时拦住敌人）
+func _blocks_path(i: int) -> bool:
+	return buildings.has(i) and not barricades.has(i)
+
+
 ## 是否为矿山格（金矿的唯一合法落点；只是地形标记，不阻挡通行）
 func is_ore(c: Vector2i) -> bool:
 	if not in_bounds(c.x, c.y):
 		return false
 	return ores.has(idx(c.x, c.y))
+
+
+## 是否为大金矿格（建在上面的金矿产出翻倍）
+func is_rich_ore(c: Vector2i) -> bool:
+	if not in_bounds(c.x, c.y):
+		return false
+	return rich_ores.has(idx(c.x, c.y))
 
 
 ## 区域内所有格子是否可建（多格建筑放置用）
@@ -121,6 +143,18 @@ func has_kind(k: int) -> bool:
 	return false
 
 
+## 某格上的建筑可享受的领域免伤（绝对领域城墙 5×5 内 5%）
+func domain_reduction_at(cell: Vector2i) -> float:
+	var r := 0.0
+	for b in buildings.values():
+		if not is_instance_valid(b) or not b.domain:
+			continue
+		var c: Vector2i = b.cell
+		if absi(cell.x - c.x) <= 2 and absi(cell.y - c.y) <= 2:
+			r = maxf(r, GameConfig.DOMAIN_REDUCTION)
+	return r
+
+
 func register(b: Node, top_left: Vector2i, size: Vector2i = Vector2i.ONE) -> void:
 	## 登记（支持多格建筑：每个格子都指向同一建筑节点）
 	for dy in size.y:
@@ -130,6 +164,8 @@ func register(b: Node, top_left: Vector2i, size: Vector2i = Vector2i.ONE) -> voi
 			buildings[i] = b
 			if b.is_wall:
 				walls[i] = true
+				if b.barricade:
+					barricades[i] = true
 	mark_dirty()
 
 
@@ -139,6 +175,7 @@ func unregister_building(b) -> void:
 		var i := idx(c.x, c.y)
 		buildings.erase(i)
 		walls.erase(i)
+		barricades.erase(i)
 	mark_dirty()
 
 
@@ -151,21 +188,40 @@ func mark_dirty() -> void:
 func reset() -> void:
 	buildings.clear()
 	walls.clear()
+	barricades.clear()
 	generate_ores()
 	_dirty = false
 	rebuild()
 
 
-## 每局随机生成矿山格：避开大本营，其余位置完全随机（数量见 GameConfig.ORE_COUNT）
+## 每局随机生成矿山格：3 处大金矿（距基地 15 格以外，产金翻倍）+ 20 处普通矿山
 func generate_ores() -> void:
 	ores.clear()
+	rich_ores.clear()
+	var base_c := GameConfig.BASE_CELL + Vector2i.ONE   # 大本营中心格
 	var guard := 0
-	while ores.size() < GameConfig.ORE_COUNT and guard < 4000:
+	while rich_ores.size() < GameConfig.RICH_ORE_COUNT and guard < 4000:
 		guard += 1
 		var c := Vector2i(randi_range(0, W - 1), randi_range(0, H - 1))
 		if GameConfig.is_base_cell(c):
 			continue
-		ores[idx(c.x, c.y)] = true
+		var d := maxi(absi(c.x - base_c.x), absi(c.y - base_c.y))
+		if d <= GameConfig.RICH_ORE_MIN_DIST:
+			continue
+		var i := idx(c.x, c.y)
+		ores[i] = true
+		rich_ores[i] = true
+
+	guard = 0
+	while ores.size() < GameConfig.ORE_COUNT + GameConfig.RICH_ORE_COUNT and guard < 8000:
+		guard += 1
+		var c := Vector2i(randi_range(0, W - 1), randi_range(0, H - 1))
+		if GameConfig.is_base_cell(c):
+			continue
+		var i := idx(c.x, c.y)
+		if ores.has(i):
+			continue
+		ores[i] = true
 
 
 # ============================================================
@@ -211,13 +267,13 @@ func _bfs(block_all: bool) -> PackedFloat32Array:
 			var ni := ny * W + nx
 			if d[ni] <= cd + 1.0:
 				continue
-			if block_all and buildings.has(ni):
+			if block_all and _blocks_path(ni):
 				continue
-			# 对角移动不允许“贴角穿墙”
+			# 对角移动不允许“贴角穿墙”（路障同样不参与阻挡）
 			if block_all and k >= 4:
-				if buildings.has(cy * W + nx):
+				if _blocks_path(cy * W + nx):
 					continue
-				if buildings.has(ny * W + cx):
+				if _blocks_path(ny * W + cx):
 					continue
 			d[ni] = cd + 1.0
 			q[tail] = ni

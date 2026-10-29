@@ -166,7 +166,7 @@ func _shoot(e: Node2D) -> void:
 		return
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position + Vector2(cos(_aim), sin(_aim)) * 12.0
-	p.setup(e, damage * GameState.tower_dmg_mul, proj_speed, tint)
+	p.setup(e, damage * GameState.building_dmg_mul, proj_speed, tint)
 	layer.add_child(p)
 	_recoil = 5.0
 

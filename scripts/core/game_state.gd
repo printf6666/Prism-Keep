@@ -14,6 +14,7 @@ signal speed_changed(mult: float)
 signal building_selected(building)   # 点击已部署建筑时发出，null 表示取消选中
 signal skill_changed(value: int)     # 技能点变化
 signal retool_menu_toggled(open: bool)
+signal enemy_killed(type: String)    # 敌人被击杀（灵魂摆渡者收集灵魂）
 
 var gold := 0.0
 var base_hp := 0.0
@@ -24,8 +25,8 @@ var finished := false
 
 # ---- 技能点与改造车间全局加成 ----
 var skill_points := 0
-var buff_levels: Array = [0, 0, 0, 0]
-var tower_dmg_mul := 1.0     # 加成 1：防御塔攻击力倍率
+var buff_levels: Array = [0, 0, 0, 0, 0, 0]
+var building_dmg_mul := 1.0  # 加成 1：所有建筑攻击力倍率（全部会攻击的建筑 / 分支塔）
 var wall_hp_mul := 1.0       # 加成 2：围墙 / 路障血量倍率
 var mine_income_bonus := 0.0 # 加成 3：金矿每次产出额外金币
 var burn_bonus := 0.0        # 加成 4：灼烧额外比例（岩浆中翻倍）
@@ -40,8 +41,8 @@ func reset() -> void:
 	total_waves = GameConfig.TOTAL_WAVES
 	finished = false
 	skill_points = 0
-	buff_levels = [0, 0, 0, 0]
-	tower_dmg_mul = 1.0
+	buff_levels = [0, 0, 0, 0, 0, 0]
+	building_dmg_mul = 1.0
 	wall_hp_mul = 1.0
 	mine_income_bonus = 0.0
 	burn_bonus = 0.0
@@ -70,9 +71,30 @@ func buff_level(i: int) -> int:
 	return buff_levels[i]
 
 
+func has_dire_straits() -> bool:
+	## 水深火热科技是否已解锁（冰暴减速 × 岩浆 → 负面翻倍 + 虚弱）
+	return buff_levels[4] > 0
+
+
 func buy_buff(i: int) -> bool:
-	## 用技能点购买改造车间加成，返回是否成功
+	## 用技能点购买改造车间加成 / 技能，返回是否成功
 	var def: Dictionary = GameConfig.RETOOL_BUFFS[i]
+
+	# 动作类（灭世）：不升级、可无限次使用，每次消耗固定技能点
+	if def.get("action", false):
+		var tower = find_death_tower()
+		if tower == null:
+			notice.emit("需要先建造死神塔")
+			return false
+		var acost: int = GameConfig.buff_cost(i, 0)
+		if skill_points < acost:
+			return false
+		skill_points -= acost
+		buff_levels[i] += 1   # 记录使用次数
+		tower.fire_apocalypse()
+		skill_changed.emit(skill_points)
+		return true
+
 	var lv: int = buff_levels[i]
 	if lv >= int(def["max_lv"]):
 		return false
@@ -83,7 +105,7 @@ func buy_buff(i: int) -> bool:
 	buff_levels[i] = lv + 1
 	match i:
 		0:
-			tower_dmg_mul = 1.0 + 0.1 * buff_levels[0]
+			building_dmg_mul = 1.0 + 0.1 * buff_levels[0]
 		1:
 			var new_mul: float = 1.0 + 0.2 * buff_levels[1]
 			var ratio: float = new_mul / wall_hp_mul
@@ -98,6 +120,18 @@ func buy_buff(i: int) -> bool:
 			burn_bonus = buff_levels[3] * 0.005
 	skill_changed.emit(skill_points)
 	return true
+
+
+## 场上唯一的死神塔（死神 / 核弹井 / 灵魂摆渡者）
+func find_death_tower():
+	for b in Board.buildings.values():
+		if not is_instance_valid(b):
+			continue
+		var k := int(b.kind)
+		if k == GameConfig.Build.DEATH or k == GameConfig.Build.DEATH_SILO \
+				or k == GameConfig.Build.DEATH_FERRY:
+			return b
+	return null
 
 
 func set_retool_menu(open: bool) -> void:

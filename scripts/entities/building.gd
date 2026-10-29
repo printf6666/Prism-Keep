@@ -9,10 +9,11 @@ var footprint := Vector2i.ONE  # 占地格数（改造车间 5×5）
 var kind := 0
 var is_wall := false
 var barricade := false  # 路障标记（围墙变体，add_child 前设置，_ready 按它初始化）
+var domain := false     # 绝对领域标记（城墙分支：嘲讽 + 代塔承伤 + 塔免伤光环）
 var max_hp := 100.0
 var hp := 100.0
 var tint := Color.WHITE
-var level := 1          # 当前等级（防御塔可升级，其余固定 1 级）
+var level := 1          # 当前等级（塔与墙可升级，其余固定 1 级）
 var max_level := 1
 var invested := 0.0     # 累计投入（建造 + 升级），拆除时按比例返还
 
@@ -35,9 +36,11 @@ func occupied_cells() -> Array:
 	return out
 
 
-func take_damage(amount: float) -> void:
+func take_damage(amount: float, attacker = null) -> void:
 	if hp <= 0.0:
 		return
+	# 绝对领域：领域内的建筑受击减免（所有建筑都属于塔的范畴）
+	amount *= 1.0 - Board.domain_reduction_at(cell)
 	hp -= amount
 	_flash = 1.0
 	queue_redraw()

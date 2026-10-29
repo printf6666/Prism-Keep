@@ -17,6 +17,9 @@ var slow_duration := 0.0       # >0 = 溅射命中后附加减速（冰暴塔）
 var slow_factor := 1.0
 var pool_radius := 0.0         # >0 = 落地生成岩浆池（熔岩塔）
 var pool_time := 0.0
+var death_payload := false     # >0 = 死神炮弹：秒杀非 Boss + 核辐射池
+var death_boss_pct := -1.0     # 死神炮弹对 Boss 的伤害比例（<0 用默认值）
+var giant := false             # 巨型核弹（灭世）：更大的弹体与爆炸
 
 var _dir := Vector2.RIGHT
 
@@ -55,6 +58,20 @@ func setup_pool(pos: Vector2, spd: float, col: Color, radius: float, time: float
 	pool_time = time
 
 
+func setup_death(pos: Vector2, spd: float, col: Color, radius: float, time: float,
+		boss_pct := -1.0, is_giant := false) -> void:
+	## 死神炮弹：落地秒杀范围内非 Boss 敌人（Boss 按 boss_pct 受伤），并留下核辐射池
+	target = null
+	target_pos = pos
+	speed = spd
+	tint = col
+	pool_radius = radius
+	pool_time = time
+	death_payload = true
+	death_boss_pct = boss_pct
+	giant = is_giant
+
+
 func _process(delta: float) -> void:
 	if target != null:
 		# 追踪模式：跟住目标，命中单体
@@ -89,20 +106,38 @@ func _process(delta: float) -> void:
 func _explode() -> void:
 	if pool_radius > 0.0:
 		var pool := POOL_SCENE.instantiate()
-		pool.setup(global_position, pool_radius, pool_time)
+		if death_payload:
+			pool.setup(global_position, pool_radius, pool_time,
+					GameConfig.DEATH_RADIATION_PCT, Color(0.45, 0.75, 0.20), false)
+		else:
+			pool.setup(global_position, pool_radius, pool_time)
 		get_parent().add_child(pool)
-	var r2 := splash_radius * splash_radius
-	for e in get_tree().get_nodes_in_group("enemies"):
-		if e.dead:
-			continue
-		if global_position.distance_squared_to(e.global_position) <= r2:
-			e.take_damage(damage)
-			if slow_duration > 0.0 and e.has_method("apply_slow"):
-				e.apply_slow(slow_duration, slow_factor)
+
+	if death_payload:
+		# 死神：范围内非 Boss 直接秒杀，Boss 按 boss_pct 受伤
+		var bpct := death_boss_pct if death_boss_pct >= 0.0 else GameConfig.DEATH_BOSS_DMG_PCT
+		var kr2 := pool_radius * pool_radius
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if e.dead:
+				continue
+			if global_position.distance_squared_to(e.global_position) <= kr2:
+				if String(e.type) == "boss":
+					e.take_damage(e.max_hp * bpct)
+				else:
+					e.take_damage(1.0e9)
+	elif splash_radius > 0.0:
+		var r2 := splash_radius * splash_radius
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if e.dead:
+				continue
+			if global_position.distance_squared_to(e.global_position) <= r2:
+				e.take_damage(damage)
+				if slow_duration > 0.0 and e.has_method("apply_slow"):
+					e.apply_slow(slow_duration, slow_factor)
 	var fx := FX_SCENE.instantiate() as BurstFx
 	fx.position = global_position
-	fx.tint = tint
-	fx.max_radius = max(splash_radius * 0.7, pool_radius * 0.5, 14.0)
+	fx.tint = Color(0.55, 0.85, 0.25) if death_payload else tint
+	fx.max_radius = max(splash_radius * 0.7, pool_radius * 0.8, 14.0)
 	get_parent().add_child(fx)
 	queue_free()
 
@@ -122,10 +157,20 @@ func _draw() -> void:
 		draw_circle(Vector2.ZERO, 3.2, tint)
 		draw_circle(Vector2.ZERO, 1.5, Color(1, 1, 1, 0.9))
 	elif pool_radius > 0.0:
-		# 岩浆弹：暗红大圆弹
-		draw_circle(Vector2.ZERO, 5.5, Color(tint.r, tint.g, tint.b, 0.3))
-		draw_circle(Vector2.ZERO, 3.4, tint)
-		draw_circle(Vector2.ZERO, 1.6, Color(1, 0.7, 0.4, 0.95))
+		if death_payload:
+			# 死神炮弹 / 巨型核弹：暗紫弹体 + 绿色辐射光晕 + 拖尾
+			var k := 2.4 if giant else 1.0
+			draw_circle(Vector2.ZERO, 13.0 * k, Color(0.45, 0.75, 0.20, 0.30))
+			draw_circle(-_dir * 9.0 * k, 5.0 * k, Color(0.45, 0.75, 0.20, 0.50))
+			draw_circle(-_dir * 16.0 * k, 3.6 * k, Color(0.45, 0.75, 0.20, 0.32))
+			draw_circle(-_dir * 22.0 * k, 2.4 * k, Color(0.45, 0.75, 0.20, 0.16))
+			draw_circle(Vector2.ZERO, 7.5 * k, Color(0.14, 0.10, 0.18))
+			draw_circle(Vector2(0.0, -1.0 * k), 3.4 * k, Color(0.65, 0.95, 0.30))
+		else:
+			# 岩浆弹：暗红大圆弹
+			draw_circle(Vector2.ZERO, 5.5, Color(tint.r, tint.g, tint.b, 0.3))
+			draw_circle(Vector2.ZERO, 3.4, tint)
+			draw_circle(Vector2.ZERO, 1.6, Color(1, 0.7, 0.4, 0.95))
 	else:
 		draw_circle(Vector2.ZERO, 3.0, tint.lightened(0.35))
 		draw_circle(Vector2.ZERO, 1.4, Color(1, 1, 1, 0.9))

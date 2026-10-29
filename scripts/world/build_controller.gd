@@ -1,12 +1,11 @@
 extends Node2D
-## 建造交互 + 建筑查看（面朝格子版）
-##   · 互动只作用于角色面前一格
-##   · F = 空地互动：按 1~4（或点建造栏）选建筑 -> 面向空地按 F 放置
+## 建造交互 + 建筑查看
+##   · 鼠标左键 = 建造 / 点选建筑，限定在角色周围 5×5 互动范围内
 ##   · G = 建筑互动：面前有建筑 -> 选中查看（升级 / 拆除），再按一次取消
 ##   · 右键 / ESC 取消建造、取消选中
 
 var selected := -1              # 当前要建造的类型，-1 = 非建造模式
-var front := Vector2i(-1, -1)   # 角色面前一格（所有互动的目标）
+var front := Vector2i(-1, -1)   # 角色面前一格（G 键互动的目标）
 
 var _sel: Node = null           # 当前查看中的建筑
 var _front_b = null             # 面前格里的建筑（用于检测新建 / 被拆后刷新）
@@ -14,6 +13,8 @@ var _buildings_root: Node2D
 var _player: Node2D
 var _near_retool := false       # 角色是否靠近改造车间
 var _retool_node = null
+var _mouse_cell := Vector2i(-1, -1)   # 鼠标悬停格
+var _mouse_in := false                # 鼠标悬停格是否在角色周围 5×5 互动范围内
 
 
 func _ready() -> void:
@@ -32,7 +33,24 @@ func _process(_delta: float) -> void:
 		front = c
 		_front_b = b
 		queue_redraw()
+
+	# 鼠标悬停格 + 是否在互动范围内（角色移动会改变范围，需每帧重算）
+	var mc := Board.cell_of(get_global_mouse_position())
+	var inr := _cell_in_range(mc)
+	if mc != _mouse_cell or inr != _mouse_in:
+		_mouse_cell = mc
+		_mouse_in = inr
+		queue_redraw()
+
 	_update_retool_proximity()
+
+
+func _cell_in_range(c: Vector2i) -> bool:
+	## 以角色所在格为中心的 5×5 范围
+	if _player == null or not is_instance_valid(_player):
+		return false
+	var pc := Board.cell_of(_player.global_position)
+	return absi(c.x - pc.x) <= 2 and absi(c.y - pc.y) <= 2
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -40,7 +58,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if not mb.pressed:
 			return
-		if mb.button_index == MOUSE_BUTTON_RIGHT:
+		if mb.button_index == MOUSE_BUTTON_LEFT:
+			_click_left()
+			get_viewport().set_input_as_handled()
+		elif mb.button_index == MOUSE_BUTTON_RIGHT:
+			# 死神分支的右键手动效果优先（核弹井瞄准 / 灵魂摆渡者释放）
+			if _try_manual_action():
+				get_viewport().set_input_as_handled()
+				return
 			if selected >= 0:
 				GameState.build_mode_changed.emit(-1)
 			elif _sel != null:
@@ -68,9 +93,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				GameState.build_mode_changed.emit(GameConfig.Build.RETOOL)
 			KEY_8:
 				GameState.build_mode_changed.emit(GameConfig.Build.FLAME)
-			KEY_F:
-				_interact_ground()
-				get_viewport().set_input_as_handled()
+			KEY_9:
+				GameState.build_mode_changed.emit(GameConfig.Build.DEATH)
 			KEY_G:
 				_interact_building()
 				get_viewport().set_input_as_handled()
@@ -92,23 +116,8 @@ func _set_mode(kind: int) -> void:
 
 
 # ============================================================
-#  F / G：与面前一格互动
+#  G：与面前一格的建筑互动
 # ============================================================
-## F：与面前的空地互动 —— 建造模式下放置，未选建筑 / 面前不是空地时提示
-func _interact_ground() -> void:
-	if _player == null or not is_instance_valid(_player):
-		return
-	if not Board.in_bounds(front.x, front.y):
-		return
-
-	if selected >= 0:
-		_try_place(front)
-	elif Board.get_building(front) != null:
-		GameState.notice.emit("面前是建筑，按 G 查看")
-	else:
-		GameState.notice.emit("按 1~8 选择建筑，面向空地按 F 建造")
-
-
 ## G：与面前的建筑互动 —— 选中查看详情，再按一次取消
 func _interact_building() -> void:
 	if _player == null or not is_instance_valid(_player):
@@ -128,12 +137,52 @@ func _interact_building() -> void:
 		queue_redraw()
 
 
+# ============================================================
+#  鼠标左键：与角色周围 5×5 范围内的格子互动
+# ============================================================
+func _click_left() -> void:
+	if selected >= 0:
+		# 建造模式：点击范围内格子放置
+		if _mouse_in:
+			_try_place(_mouse_cell)
+		else:
+			GameState.notice.emit("超出互动范围（以角色为中心 5×5）")
+		return
+
+	if not _mouse_in:
+		GameState.notice.emit("超出互动范围（以角色为中心 5×5）")
+		return
+
+	# 非建造模式：点选建筑查看（再点一次取消），点空地取消选中
+	var b = Board.get_building(_mouse_cell)
+	if b == _sel:
+		_clear_selection()
+	elif b != null:
+		_sel = b
+		GameState.building_selected.emit(_sel)
+		queue_redraw()
+	else:
+		_clear_selection()
+
+
 func _clear_selection() -> void:
 	if _sel == null:
 		return
 	_sel = null
 	GameState.building_selected.emit(null)
 	queue_redraw()
+
+
+## 右键手动效果：优先鼠标点中的建筑（灵魂摆渡者），其次当前选中的建筑（核弹井瞄准）
+func _try_manual_action() -> bool:
+	var wp := get_global_mouse_position()
+	var hit = Board.get_building(Board.cell_of(wp))
+	if hit != null and is_instance_valid(hit) and hit.has_method("try_manual_action"):
+		if hit.try_manual_action(wp):
+			return true
+	if _sel != null and is_instance_valid(_sel) and _sel.has_method("try_manual_action"):
+		return _sel.try_manual_action(wp)
+	return false
 
 
 # ============================================================
@@ -183,6 +232,11 @@ func _try_place(c: Vector2i) -> void:
 		GameState.notice.emit("金矿只能建在矿山格上")
 		return
 
+	# 死神全图仅能建造一座（含分支形态）
+	if selected == GameConfig.Build.DEATH and GameState.find_death_tower() != null:
+		GameState.notice.emit("死神全图仅能建造一座")
+		return
+
 	# 多格建筑：整个占地范围都必须可建
 	var fp: Vector2i = def.get("footprint", Vector2i.ONE)
 	if not Board.is_free_area(c, fp):
@@ -221,6 +275,14 @@ func _draw() -> void:
 	var c := Board.cell_to_world(front)
 	var rect := Rect2(c - Vector2(half, half), Vector2(cell, cell))
 
+	# 5×5 鼠标互动范围（以角色所在格为中心）
+	if _player != null and is_instance_valid(_player):
+		var pc := Board.cell_of(_player.global_position)
+		var zone := Rect2(Vector2(pc.x - 2, pc.y - 2) * cell, Vector2(5, 5) * cell)
+		var zc := GameConfig.C_BASE
+		draw_rect(zone, Color(zc.r, zc.g, zc.b, 0.05), true)
+		draw_rect(zone, Color(zc.r, zc.g, zc.b, 0.40), false, 1.5)
+
 	# 金矿建造模式：高亮全部矿山格，指明可落点
 	if selected == GameConfig.Build.MINE:
 		for oc in Board.ore_cells():
@@ -228,36 +290,48 @@ func _draw() -> void:
 			draw_rect(Rect2(ow - Vector2(half, half), Vector2(cell, cell)),
 					Color(GameConfig.C_MINE.r, GameConfig.C_MINE.g, GameConfig.C_MINE.b, 0.10), true)
 
-	# 建造预览：以面前格为左上角显示绿 / 红幽灵（多格建筑覆盖整个占地范围）
-	if selected >= 0:
+	# 建造预览：跟随鼠标（需在 5×5 互动范围内）；多格建筑覆盖整个占地范围
+	if selected >= 0 and _mouse_in:
 		var def := GameConfig.build_def(selected)
 		var fp: Vector2i = def.get("footprint", Vector2i.ONE)
-		var ok: bool = Board.is_free_area(front, fp) and GameState.can_afford(def["cost"])
+		var ok: bool = Board.is_free_area(_mouse_cell, fp) and GameState.can_afford(def["cost"])
 		if selected == GameConfig.Build.MINE:
-			ok = ok and Board.is_ore(front)
+			ok = ok and Board.is_ore(_mouse_cell)
 		var col: Color = GameConfig.C_OK if ok else GameConfig.C_BAD
-		var ghost := Rect2(rect.position, Vector2(fp) * cell)
+		var gc := Board.cell_to_world(_mouse_cell)
+		var ghost := Rect2(gc - Vector2(half, half), Vector2(fp) * cell)
 		draw_rect(ghost, Color(col.r, col.g, col.b, 0.22), true)
 		draw_rect(ghost, col, false, 2.0)
 
-		if GameConfig.is_tower_kind(selected):
-			var rr := 5.0 if selected == GameConfig.Build.TOWER \
-					else 4.0 if selected == GameConfig.Build.FROST \
-					else 4.5
-			draw_arc(c, rr * cell, 0.0, TAU, 64, Color(col.r, col.g, col.b, 0.45), 1.5, true)
+		# 射程圈：由 build_def 的 "range" 配置驱动（无 range 的建筑不画）
+		var rr: float = def.get("range", -1.0)
+		if rr > 0.0:
+			draw_arc(gc, rr * cell, 0.0, TAU, 64, Color(col.r, col.g, col.b, 0.45), 1.5, true)
 	else:
-		# 非建造模式：面前格提示框 —— 空地淡框，建筑亮框（塔顺带显示射程）
+		# 非建造模式：面前格有建筑时亮框提示（G 键目标），塔顺带显示射程
 		var fb = Board.get_building(front)
 		if fb != null and is_instance_valid(fb):
 			var ac: Color = GameConfig.C_BASE
 			draw_rect(rect, Color(ac.r, ac.g, ac.b, 0.10), true)
 			draw_rect(rect, Color(ac.r, ac.g, ac.b, 0.80), false, 2.0)
-			if fb != _sel and GameConfig.is_tower_kind(int(fb.kind)):
-				draw_arc(fb.global_position, float(fb.range_cells) * cell, 0.0, TAU, 64,
+			# 射程圈：建筑自带 range_cells 才画（由各塔脚本定义）
+			var frc = fb.get("range_cells")
+			if fb != _sel and frc != null and float(frc) > 0.0:
+				draw_arc(fb.global_position, float(frc) * cell, 0.0, TAU, 64,
 						Color(fb.tint.r, fb.tint.g, fb.tint.b, 0.35), 1.5, true)
-		else:
-			var dim: Color = GameConfig.C_TEXT_DIM
-			draw_rect(rect, Color(dim.r, dim.g, dim.b, 0.25), false, 1.0)
+
+		# 鼠标悬停（范围内）：建筑亮框 + 塔射程
+		if _mouse_in:
+			var mb = Board.get_building(_mouse_cell)
+			if mb != null and is_instance_valid(mb):
+				var mc := Board.cell_to_world(_mouse_cell)
+				var mrect := Rect2(mc - Vector2(half, half), Vector2(cell, cell))
+				draw_rect(mrect, Color(1, 1, 1, 0.10), true)
+				draw_rect(mrect, Color(1, 1, 1, 0.80), false, 2.0)
+				var mrc = mb.get("range_cells")
+				if mb != _sel and mrc != null and float(mrc) > 0.0:
+					draw_arc(mb.global_position, float(mrc) * cell, 0.0, TAU, 64,
+							Color(mb.tint.r, mb.tint.g, mb.tint.b, 0.35), 1.5, true)
 
 	# 选中高亮（多格建筑覆盖整个占地范围）
 	if _sel != null and is_instance_valid(_sel):
@@ -267,8 +341,9 @@ func _draw() -> void:
 		draw_rect(r, Color(1, 1, 1, 0.12), true)
 		draw_rect(r, Color(1, 1, 1, 0.85), false, 2.0)
 		_draw_corners(p, fh + 3.0, Color(1, 1, 1, 0.9))
-		if GameConfig.is_tower_kind(int(_sel.kind)):
-			draw_arc(p, float(_sel.range_cells) * cell, 0.0, TAU, 64,
+		var src = _sel.get("range_cells")
+		if src != null and float(src) > 0.0:
+			draw_arc(p, float(src) * cell, 0.0, TAU, 64,
 					Color(_sel.tint.r, _sel.tint.g, _sel.tint.b, 0.45), 1.5, true)
 
 	# 靠近改造车间：头顶提示按 I

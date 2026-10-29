@@ -10,6 +10,9 @@ const CELL := 32.0                     # 单格边长（像素）
 const BASE_CELL := Vector2i(39, 39)    # 大本营 2x2 的左上角格（地图正中央）
 const BASE_SIZE := 2
 const ORE_COUNT := 20                  # 矿山格数量（金矿只能建在矿山格上）
+const RICH_ORE_COUNT := 3              # 大金矿数量（距基地 15 格以外，产金翻倍）
+const RICH_ORE_MIN_DIST := 15          # 大金矿距基地的最小切比雪夫距离
+const RICH_INCOME_MUL := 2.0           # 大金矿上的金矿产出倍率
 
 # ---------------- 规则 ----------------
 const START_GOLD := 220.0
@@ -24,10 +27,10 @@ const PLAYER_SPEED := 230.0            # 角色移动速度（像素/秒）
 const PLAYER_RADIUS := 9.0
 
 # ---------------- 建筑类型 ----------------
-enum Build { TOWER, MINE, WALL, FROST, TOWER_RAPID, TOWER_RANGE, BARRICADE, CANNON, CANNON_HEAVY, CANNON_MORTAR, FROST_STORM, FROST_BEAM, RETOOL, FLAME, FLAME_BLAZE, MAGMA }
+enum Build { TOWER, MINE, WALL, FROST, TOWER_RAPID, TOWER_RANGE, BARRICADE, CANNON, CANNON_HEAVY, CANNON_MORTAR, FROST_STORM, FROST_BEAM, RETOOL, FLAME, FLAME_BLAZE, MAGMA, WALL_DOMAIN, WALL_MEMORY, BARRICADE_TURTLE, BARRICADE_THORNS, DEATH, DEATH_SILO, DEATH_FERRY }
 
 # ---------------- 升级 / 拆除 ----------------
-const MAX_LEVEL := 3                # 防御塔最高等级
+const MAX_LEVEL := 3                # 塔最高等级
 const UPGRADE_COST_RATE := 1.1      # 升级费用 = 1.1 ×（建造价格 + 前一次升级价格）
 const REFUND_BASE := 0.70           # 拆除返还：1 级的返还比例
 const REFUND_STEP := 0.15           # 等级每高一级，返还比例递减
@@ -67,10 +70,18 @@ const SP_MOB := 1                     # 击杀小怪（普通 / 疾行）技能�
 const SP_ELITE := 50                  # 击杀精英怪（重甲）技能点
 const SP_BOSS := 300                  # 击杀 Boss 技能点
 const RETOOL_BUFFS := [
-	{"id": "tower", "name": "防御塔攻击力 +10%", "base_cost": 100, "max_lv": 5},
-	{"id": "wall", "name": "围墙 / 路障血量 +20%", "base_cost": 60, "max_lv": 5},
-	{"id": "mine", "name": "金矿产量 +0.5", "base_cost": 50, "max_lv": 10},
-	{"id": "burn", "name": "灼烧效果 +0.5%", "base_cost": 1500, "max_lv": 5, "flat": true},
+	{"id": "tower", "name": "塔攻击力 +10%", "base_cost": 100, "max_lv": 5,
+		"desc": "所有塔的攻击力提升 10%"},
+	{"id": "wall", "name": "围墙 / 路障血量 +20%", "base_cost": 60, "max_lv": 5,
+		"desc": "围墙与路障的血量提升 20%，已建成的立即回补"},
+	{"id": "mine", "name": "金矿产量 +0.5", "base_cost": 50, "max_lv": 10,
+		"desc": "金矿每次产出额外 +0.5 金"},
+	{"id": "burn", "name": "灼烧效果 +0.5%", "base_cost": 1500, "max_lv": 5, "flat": true,
+		"desc": "灼烧每秒伤害提升 0.5% 最大生命值（岩浆中翻倍）"},
+	{"id": "dire", "name": "水深火热", "base_cost": 3000, "max_lv": 1,
+		"desc": "解锁：被冰暴减速且身处岩浆的敌人，负面效果翻倍并陷入虚弱（受到的伤害 ×3）"},
+	{"id": "apocalypse", "name": "灭世", "base_cost": APOCALYPSE_COST, "max_lv": 1, "action": true,
+		"desc": "消耗 10000 技能点：死神塔连射 10 颗巨型核弹，每颗 15×15 范围、20 秒核辐射，对 Boss 造成 50% 伤害；使用次数无上限"},
 ]
 
 
@@ -95,6 +106,47 @@ const MAGMA_POOL_TIME := 5.0          # 岩浆池持续时间（秒）
 const LAVA_BURN_TIME := 3.0           # 离开岩浆后灼烧残留（秒）
 const LAVA_BURN_MUL := 2.0            # 岩浆中的灼烧倍率（含技能点加成翻倍）
 
+# ---------------- 墙体 / 路障分支 ----------------
+const WALL_BRANCH_COST := 40.0        # 城墙分支定型费用
+const BARRICADE_BRANCH_COST := 60.0   # 路障分支定型费用
+const DOMAIN_REDUCTION := 0.05        # 绝对领域：范围内建筑的免伤比例
+const DOMAIN_SIZE := 5                # 绝对领域覆盖格数（5×5）
+const MEMORY_REGEN := 2.0             # 记忆之石：每秒恢复生命
+const TURTLE_REDUCTION := 0.05        # 龟壳：每个攻击者提供的免伤
+const TURTLE_CAP := 0.5               # 龟壳免伤上限
+const THORNS_PCT := 0.005             # 荆棘：反弹附近敌人最大生命值的比例
+const THORNS_RADIUS := 64.0           # 荆棘反伤半径（像素，约 2 格）
+
+# ---------------- 死神（超级武器） ----------------
+const DEATH_INTERVAL := 45.0          # 攻击间隔（秒，非常低）
+const DEATH_RADIUS := 160.0           # 打击半径（像素，覆盖 10×10 格）
+const DEATH_BOSS_DMG_PCT := 0.05      # 1 级死神对 Boss 的伤害（最大生命值比例）
+const DEATH_BOSS_DMG_STEP := 0.05     # 每升一级对 Boss 伤害 +5%
+const DEATH_MAX_LEVEL := 3            # 死神最高 3 级，满级后分支进化
+const DEATH_BRANCH_COST := 3000.0     # 死神分支进化费用
+const DEATH_RADIATION_PCT := 0.10     # 核辐射：每秒扣除敌人最大生命值的比例
+const DEATH_RADIATION_TIME := 15.0    # 核辐射持续时间（秒）
+const DEATH_SHELL_SPEED := 450.0      # 炮弹飞行速度
+
+# ---------------- 灭世（改造车间技能） ----------------
+const APOCALYPSE_COST := 10000        # 每次使用的技能点消耗（使用次数无上限）
+const APOCALYPSE_NUKES := 10          # 巨型核弹数量
+const APOCALYPSE_RADIUS := 240.0      # 单颗打击半径（像素，覆盖 15×15 格）
+const APOCALYPSE_RAD_TIME := 20.0     # 核辐射持续时间（秒）
+const APOCALYPSE_BOSS_PCT := 0.5      # 灭世对 Boss 的伤害（最大生命值比例）
+
+# ---------------- 死神分支：核弹井 / 灵魂摆渡者 ----------------
+const SILO_COOLDOWN := 180.0          # 核弹井冷却（3 分钟）
+const SILO_AREA_MUL := 6.0            # 打击面积为初始死神的 6 倍（半径 ×√6）
+const SILO_BOSS_MUL := 6.0            # 对 Boss 伤害为初始死神的 6 倍
+const FERRY_SOUL_ELITE := 2           # 灵魂：精英怪
+const FERRY_SOUL_BOSS := 5            # 灵魂：Boss
+const FERRY_SOUL_MOB := 1             # 灵魂：小怪
+const FERRY_THRESHOLD := 100          # 灵魂阈值（达到后可右键释放）
+const FERRY_BASE_PCT := 0.2           # 灵魂冲击：基础伤害（最大生命值比例）
+const FERRY_STEP_PCT := 0.01          # 每多 100 灵魂 +1%
+const FERRY_BOSS_CAP := 0.2           # 对 Boss 的伤害上限
+
 
 # ---------------- 配色（极简低饱和 + 高辨识度）----------------
 const C_BG := Color(0.055, 0.067, 0.090)
@@ -112,6 +164,13 @@ const C_RETOOL := Color(0.800, 0.680, 1.000)         # 改造车间（薰衣草�
 const C_FLAME := Color(0.980, 0.500, 0.180)          # 喷火器（烈焰橙）
 const C_FLAME_BLAZE := Color(1.000, 0.320, 0.120)    # 烈炎塔（炽焰红橙）
 const C_MAGMA := Color(0.720, 0.160, 0.200)          # 熔岩塔（熔岩暗红）
+const C_WALL_DOMAIN := Color(0.400, 0.700, 1.000)    # 绝对领域（护盾蓝）
+const C_WALL_MEMORY := Color(0.500, 0.920, 0.550)    # 记忆之石（翠绿）
+const C_WALL_TURTLE := Color(0.420, 0.720, 0.580)    # 龟壳（青甲）
+const C_WALL_THORNS := Color(0.600, 0.850, 0.300)    # 荆棘（毒绿）
+const C_DEATH := Color(0.520, 0.440, 0.620)          # 死神（死亡紫灰）
+const C_DEATH_SILO := Color(0.640, 0.520, 0.320)     # 核弹井（沙褐钢铁）
+const C_DEATH_FERRY := Color(0.420, 0.820, 0.780)    # 灵魂摆渡者（幽魂青）
 const C_CANNON := Color(0.930, 0.520, 0.380)          # 炮塔（暖橙红）
 const C_CANNON_HEAVY := Color(0.950, 0.340, 0.300)    # 重型炮（深红）
 const C_CANNON_MORTAR := Color(0.760, 0.720, 0.400)   # 迫击炮（橄榄绿）
@@ -149,6 +208,22 @@ static func is_base_cell(c: Vector2i) -> bool:
 #  建筑定义
 # ============================================================
 static func build_def(kind: int) -> Dictionary:
+	## 包装层：统一注入 "weapon"（会攻击的塔）与 "range"（射程圈）标记，
+	## 后续新增建筑在此登记即可自动进入塔的各类体系
+	var def := _build_def(kind)
+	if def.is_empty():
+		return def
+	def["weapon"] = not NON_WEAPON.has(kind)
+	def["range"] = def.get("range", -1.0)
+	return def
+
+
+## 不会攻击的建筑（其余定义默认视为会攻击的塔）
+const NON_WEAPON := [Build.MINE, Build.WALL, Build.BARRICADE, Build.RETOOL,
+		Build.WALL_DOMAIN, Build.WALL_MEMORY, Build.BARRICADE_TURTLE, Build.BARRICADE_THORNS]
+
+
+static func _build_def(kind: int) -> Dictionary:
 	match kind:
 		Build.TOWER:
 			return {
@@ -157,6 +232,7 @@ static func build_def(kind: int) -> Dictionary:
 				"cost": 50.0,
 				"color": C_TOWER,
 				"scene": "res://scenes/entities/arrow_tower.tscn",
+				"range": 5.0,
 				"desc": "自动索敌并射击，射程 5 格，可升级至 3 级后分支定型",
 			}
 		Build.MINE:
@@ -193,7 +269,8 @@ static func build_def(kind: int) -> Dictionary:
 				"cost": 70.0,
 				"color": C_FROST,
 				"scene": "res://scenes/entities/frost_tower.tscn",
-				"desc": "冰晶弹命中后冰冻敌人，使其无法移动和攻击，可升级至 3 级后分支定型",
+				"range": 4.0,
+				"desc": "冰晶弹命中后冰冻敌人，使其无法移动和攻击，可升级至 3 级",
 			}
 		Build.FROST_STORM:
 			return {
@@ -238,7 +315,8 @@ static func build_def(kind: int) -> Dictionary:
 				"cost": 90.0,
 				"color": C_CANNON,
 				"scene": "res://scenes/entities/cannon_tower.tscn",
-				"desc": "重炮系防御塔，可升级至 3 级后分支定型",
+				"range": 4.5,
+				"desc": "重炮系塔，可升级至 3 级后分支定型",
 			}
 		Build.CANNON_HEAVY:
 			return {
@@ -275,6 +353,7 @@ static func build_def(kind: int) -> Dictionary:
 				"cost": 80.0,
 				"color": C_FLAME,
 				"scene": "res://scenes/entities/flame_tower.tscn",
+				"range": 3.0,
 				"desc": "45° 扇形火舌，点燃敌人：每秒烧 1% 最大生命值，持续 10 秒，可升级至 3 级后分支",
 			}
 		Build.FLAME_BLAZE:
@@ -295,19 +374,88 @@ static func build_def(kind: int) -> Dictionary:
 				"scene": "res://scenes/entities/flame_tower.tscn",
 				"desc": "满级喷火器分支：向敌人密集处投掷岩浆，灼烧 2%/秒并蔓延约 3 格，走出仍残留灼烧",
 			}
+		Build.WALL_DOMAIN:
+			return {
+				"name": "绝对领域",
+				"hotkey": "",
+				"cost": WALL_BRANCH_COST,
+				"color": C_WALL_DOMAIN,
+				"scene": "res://scenes/entities/wall.tscn",
+				"desc": "满级城墙分支：主动承受 5×5 内建筑所受的攻击，并赋予范围内建筑 5% 免伤",
+			}
+		Build.WALL_MEMORY:
+			return {
+				"name": "记忆之石",
+				"hotkey": "",
+				"cost": WALL_BRANCH_COST,
+				"color": C_WALL_MEMORY,
+				"scene": "res://scenes/entities/wall.tscn",
+				"desc": "满级城墙分支：每秒恢复 2 点生命值",
+			}
+		Build.BARRICADE_TURTLE:
+			return {
+				"name": "龟壳",
+				"hotkey": "",
+				"cost": BARRICADE_BRANCH_COST,
+				"color": C_WALL_TURTLE,
+				"scene": "res://scenes/entities/wall.tscn",
+				"desc": "满级路障分支：每个正在攻击它的敌人提供 5% 免伤，上限 50%",
+			}
+		Build.BARRICADE_THORNS:
+			return {
+				"name": "荆棘",
+				"hotkey": "",
+				"cost": BARRICADE_BRANCH_COST,
+				"color": C_WALL_THORNS,
+				"scene": "res://scenes/entities/wall.tscn",
+				"desc": "满级路障分支：受到攻击时，对附近敌人反弹其最大生命值 0.5% 的伤害",
+			}
+		Build.DEATH:
+			return {
+				"name": "死神",
+				"hotkey": "9",
+				"cost": 2000.0,
+				"color": C_DEATH,
+				"scene": "res://scenes/entities/death_tower.tscn",
+				"footprint": Vector2i(6, 6),
+				"desc": "超级武器（6×6 占地，全图限一座）：全图索敌，炮弹秒杀 10×10 内非 Boss 敌人（Boss 受 5% 起，每级 +5%），留 15 秒核辐射（10%/秒）；3 级后可分支进化",
+			}
+		Build.DEATH_SILO:
+			return {
+				"name": "核弹井",
+				"hotkey": "",
+				"cost": DEATH_BRANCH_COST,
+				"color": C_DEATH_SILO,
+				"scene": "res://scenes/entities/death_tower.tscn",
+				"footprint": Vector2i(6, 6),
+				"desc": "死神分支：右键手动瞄准，3 分钟冷却；打击面积为初始死神的 6 倍，对 Boss 伤害 ×6",
+			}
+		Build.DEATH_FERRY:
+			return {
+				"name": "灵魂摆渡者",
+				"hotkey": "",
+				"cost": DEATH_BRANCH_COST,
+				"color": C_DEATH_FERRY,
+				"scene": "res://scenes/entities/death_tower.tscn",
+				"footprint": Vector2i(6, 6),
+				"desc": "死神分支：击杀收集灵魂（精英 2 / Boss 5 / 小怪 1），标题栏右键开火；每 100 灵魂计 1 次释放（灵魂不消耗），右键释放全场 20% 最大生命值冲击",
+			}
 	return {}
 
 
 # ============================================================
 #  建筑分类
 # ============================================================
-static func is_tower_kind(kind: int) -> bool:
-	## 炮塔类（敌人被围死时优先拆，选中框 / 面前格显示射程圈）
-	return kind == Build.TOWER or kind == Build.FROST \
-			or kind == Build.TOWER_RAPID or kind == Build.TOWER_RANGE \
-			or kind == Build.CANNON or kind == Build.CANNON_HEAVY or kind == Build.CANNON_MORTAR \
-			or kind == Build.FROST_STORM or kind == Build.FROST_BEAM \
-			or kind == Build.FLAME or kind == Build.FLAME_BLAZE or kind == Build.MAGMA
+static func is_tower_kind(_kind: int) -> bool:
+	## 所有建筑都属于塔的范畴（含围墙 / 金矿 / 改造车间与后续新增的建筑，自动适用）
+	return true
+
+
+## 会主动攻击的塔（敌人被围死时优先拆的目标；由 build_def 的 "weapon" 标记驱动，
+## 后续新增会攻击的塔只需在其定义里加 "weapon": true）
+static func is_weapon_tower(kind: int) -> bool:
+	var def := build_def(kind)
+	return not def.is_empty() and def.get("weapon", false)
 
 
 # ============================================================

@@ -1,6 +1,7 @@
 class_name Enemy
 extends Node2D
 ## 敌人：纯几何体。沿流场走向大本营；前路被围墙挡住时改为拆墙。
+## 路障对小怪来说算“空地”：不会让它改道，但走到跟前仍然会被挡住并停下来拆它。
 ## 圆形=普通 / 三角形=疾行 / 方形=重甲 / 五边形=Boss
 
 const FX_SCENE := preload("res://scenes/fx/burst_fx.tscn")
@@ -35,6 +36,8 @@ var slow_factor := 1.0     # 减速期间移速倍率（0.5 = 减半）
 var burn_left := 0.0       # 灼烧剩余时间（喷火器 / 岩浆）
 var burn_pct := 0.0        # 灼烧强度：每秒燃烧最大生命值的比例
 var _burn_acc := 0.0       # 灼烧按整秒结算的累计器
+var dire := false          # 水深火热：减速 × 岩浆同时生效 → 负面翻倍 + 受伤 ×3
+var lava_stamp := -100000  # 最近一次身处岩浆的时间戳（岩浆池每 0.5s 盖章）
 
 
 func _ready() -> void:
@@ -90,8 +93,11 @@ func apply_burn(pct: float, duration: float) -> void:
 
 
 func _eff_speed() -> float:
-	## 当前实际移速（减速期间乘以 slow_factor）
-	return speed * (slow_factor if slow_left > 0.0 else 1.0)
+	## 当前实际移速（减速期间乘以 slow_factor；水深火热下减速翻倍）
+	var f := slow_factor if slow_left > 0.0 else 1.0
+	if dire:
+		f *= 0.5
+	return speed * f
 
 
 func _process(delta: float) -> void:
@@ -100,13 +106,17 @@ func _process(delta: float) -> void:
 
 	_hit = maxf(0.0, _hit - delta * 4.0)
 
+	# 水深火热：被冰暴减速 且 身处岩浆（600ms 内盖过章）→ 触发，否则解除
+	dire = GameState.has_dire_straits() and slow_left > 0.0 \
+			and Time.get_ticks_msec() - lava_stamp < 600
+
 	# 灼烧：按整秒结算，每秒燃烧最大生命值的 burn_pct（冻结中仍持续燃烧）
 	if burn_left > 0.0:
 		burn_left = maxf(0.0, burn_left - delta)
 		_burn_acc += delta
 		if _burn_acc >= 1.0:
 			_burn_acc -= 1.0
-			take_damage(max_hp * burn_pct)
+			take_damage(max_hp * burn_pct * (2.0 if dire else 1.0), null, true)
 		queue_redraw()
 		if dead:
 			return
@@ -150,15 +160,27 @@ func _process(delta: float) -> void:
 		if nxt.x < 0:
 			_strike_base()
 		else:
-			_move_to(nxt, delta)
+			# 路障在寻路里被当成空地，但实际仍然占格挡人：走到跟前就地把它拆掉。
+			# 这一支是“堵路”的保证，与下面的嘲讽逻辑互相独立——即使以后改了嘲讽优先级，
+			# 敌人也不会直接穿过路障格。
+			var ahead = Board.get_building(nxt)
+			if ahead != null and is_instance_valid(ahead) and ahead.barricade:
+				_face_to(ahead, delta)
+				_strike(ahead)
+			else:
+				_move_to(nxt, delta)
 		queue_redraw()
 		return
 
-	# 4) 大本营被围死 → 优先拆炮塔，其次拆挡路的建筑（围墙只有重甲 / Boss 会强拆）
+	# 4) 大本营被围死 → 优先拆塔，其次拆挡路的建筑（围墙只有重甲 / Boss 会强拆）
 	var tower = _adjacent_tower(cell)
 	if tower != null:
-		_face_to(tower, delta)
-		_strike(tower)
+		# 绝对领域：域内塔受到攻击时，由领域城墙代为承受
+		var victim = _domain_covering(tower.cell)
+		if victim == null:
+			victim = tower
+		_face_to(victim, delta)
+		_strike(victim)
 		queue_redraw()
 		return
 
@@ -209,7 +231,7 @@ func _adjacent_tower(cell: Vector2i):
 		var b = Board.get_building(c)
 		if b == null or not is_instance_valid(b):
 			continue
-		if not GameConfig.is_tower_kind(int(b.kind)):
+		if not GameConfig.is_weapon_tower(int(b.kind)):
 			continue
 		var d: float = global_position.distance_squared_to(b.global_position)
 		if d < best_d:
@@ -218,7 +240,7 @@ func _adjacent_tower(cell: Vector2i):
 	return best
 
 
-## 身边 8 格里的嘲讽目标：改造车间（优先）> 路障
+## 身边 8 格里的嘲讽目标：改造车间（优先）> 绝对领域 > 路障
 func _adjacent_taunt(cell: Vector2i):
 	var barricade = null
 	for k in 8:
@@ -226,11 +248,23 @@ func _adjacent_taunt(cell: Vector2i):
 		var b = Board.get_building(c)
 		if b == null or not is_instance_valid(b):
 			continue
-		if int(b.kind) == GameConfig.Build.RETOOL:
+		var knd := int(b.kind)
+		if knd == GameConfig.Build.RETOOL or knd == GameConfig.Build.WALL_DOMAIN:
 			return b
 		if b.barricade and barricade == null:
 			barricade = b
 	return barricade
+
+
+## 覆盖某格的绝对领域城墙（领域内塔被攻击时代为承受）
+func _domain_covering(c: Vector2i):
+	for b in Board.buildings.values():
+		if not is_instance_valid(b) or not b.domain:
+			continue
+		var wc: Vector2i = b.cell
+		if absi(c.x - wc.x) <= 2 and absi(c.y - wc.y) <= 2:
+			return b
+	return null
 
 
 ## 被围墙挡死且自己不强拆时的绕行：找 dist_free 更小的空邻格（不走建筑）
@@ -254,7 +288,7 @@ func _strike(target) -> void:
 	if _attack_cd > 0.0:
 		return
 	_attack_cd = attack_interval
-	target.take_damage(damage)
+	target.take_damage(damage, self)
 
 
 func _strike_base() -> void:
@@ -264,9 +298,12 @@ func _strike_base() -> void:
 	GameState.damage_base(damage)
 
 
-func take_damage(amount: float) -> void:
+func take_damage(amount: float, _attacker = null, from_burn := false) -> void:
 	if dead:
 		return
+	# 虚弱（水深火热）：受到的伤害翻三倍（灼烧本身已在结算时翻倍，不再叠加）
+	if dire and not from_burn:
+		amount *= 3.0
 	hp -= amount
 	_hit = 1.0
 	queue_redraw()
@@ -284,6 +321,7 @@ func _die() -> void:
 			GameState.add_skill_points(GameConfig.SP_ELITE)
 		_:
 			GameState.add_skill_points(GameConfig.SP_MOB)
+	GameState.enemy_killed.emit(String(type))
 	var fx := FX_SCENE.instantiate() as BurstFx
 	fx.position = position
 	fx.tint = color
@@ -302,6 +340,8 @@ func _draw() -> void:
 		col = col.lerp(Color(1, 1, 1), clampf(_hit, 0.0, 0.85))
 	if frozen:
 		col = col.lerp(Color(0.72, 0.92, 1.0), 0.55)
+	elif dire:
+		col = col.lerp(Color(0.78, 0.30, 0.95), 0.40)
 	elif burn_left > 0.0:
 		col = col.lerp(Color(1.0, 0.45, 0.10), 0.50)
 	elif slow_left > 0.0:

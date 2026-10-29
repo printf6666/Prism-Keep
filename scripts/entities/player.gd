@@ -1,6 +1,7 @@
 extends Node2D
 ## 玩家角色（占位符，纯几何体拼的）
 ## - WASD 自由移动，视角跟着角色走，移动方向即面朝方向
+## - 碰撞：除路障外所有建筑都挡人；路障对角色是“可穿过”的（敌人仍会被它挡住）
 ## - 目前没有任何攻击手段，只是一个“人在这儿”的锚点
 
 var _face := -PI * 0.5
@@ -40,10 +41,14 @@ func _walkable(p: Vector2) -> bool:
 	var r := GameConfig.PLAYER_RADIUS
 	if p.x < r or p.y < r or p.x > ws.x - r or p.y > ws.y - r:
 		return false
-	return Board.get_building(Board.cell_of(p)) == null
+	var b = Board.get_building(Board.cell_of(p))
+	if b == null:
+		return true
+	# 路障：角色可以直接穿过去（敌人依旧被它挡住）
+	return is_instance_valid(b) and b.barricade
 
 
-## 角色面前一格：朝向主导轴方向的相邻格，F / G 键互动的目标
+## 角色面前一格：朝向主导轴方向的相邻格，G 键互动的目标
 ## （斜向移动时取 x / y 分量较大的一侧，保证结果永远是正交相邻格）
 func front_cell() -> Vector2i:
 	var dir := Vector2(cos(_face), sin(_face))

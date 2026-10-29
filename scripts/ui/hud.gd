@@ -9,6 +9,7 @@ var _hp_bar: ProgressBar
 var _hp_fill: StyleBoxFlat
 
 var _build_btns: Array = []
+var _retool_btn: Button
 var _next_btn: Button
 var _speed_btns: Array = []
 var _pause_btn: Button
@@ -57,6 +58,8 @@ func _ready() -> void:
 	_build_retool_panel()
 	_build_top_right()
 	_build_minimap()
+	_build_retool_shop_button()
+	_build_death_button()
 	_build_build_bar()
 	_build_next_button()
 	_build_toast()
@@ -182,14 +185,18 @@ func _build_info() -> void:
 
 
 # ============================================================
-#  改造车间菜单（靠近车间按 I 打开）
+#  改造车间菜单（靠近车间按 I 打开，屏幕底部 / 建造栏上方）
 # ============================================================
 func _build_retool_panel() -> void:
 	_retool_panel = PanelContainer.new()
 	_retool_panel.name = "RetoolPanel"
 	_retool_panel.add_theme_stylebox_override("panel", _panel_style())
-	_retool_panel.position = Vector2(18, 400)
-	_retool_panel.custom_minimum_size = Vector2(300, 0)
+	_retool_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_retool_panel.offset_left = -360.0
+	_retool_panel.offset_right = 360.0
+	_retool_panel.offset_top = -344.0
+	_retool_panel.offset_bottom = -126.0
+	_retool_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_retool_panel.visible = false
 	_root.add_child(_retool_panel)
 
@@ -202,37 +209,60 @@ func _build_retool_panel() -> void:
 	vb.add_child(head)
 
 	var title := Label.new()
-	title.text = "改造车间"
-	title.add_theme_font_size_override("font_size", 18)
+	title.text = "★ 改造车间"
+	title.add_theme_font_size_override("font_size", 17)
 	title.add_theme_color_override("font_color", GameConfig.C_RETOOL)
 	head.add_child(title)
 
 	_sp_label = Label.new()
-	_sp_label.add_theme_font_size_override("font_size", 16)
+	_sp_label.add_theme_font_size_override("font_size", 15)
 	_sp_label.add_theme_color_override("font_color", GameConfig.C_BASE)
 	head.add_child(_sp_label)
 
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 16)
+	grid.add_theme_constant_override("v_separation", 6)
+	vb.add_child(grid)
+
 	for i in GameConfig.RETOOL_BUFFS.size():
+		var def: Dictionary = GameConfig.RETOOL_BUFFS[i]
+		var cell := VBoxContainer.new()
+		cell.add_theme_constant_override("separation", 2)
+		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+		var name_lb := Label.new()
+		name_lb.add_theme_font_size_override("font_size", 13)
+		name_lb.add_theme_color_override("font_color", GameConfig.C_TEXT)
+		cell.add_child(name_lb)
+
+		var star_lb := Label.new()
+		star_lb.add_theme_font_size_override("font_size", 12)
+		star_lb.add_theme_color_override("font_color", GameConfig.C_MINE)
+		cell.add_child(star_lb)
+
+		var bb := _mk_button("", 132.0, 30.0)
+		bb.add_theme_font_size_override("font_size", 12)
+		bb.tooltip_text = def.get("desc", "")
+		bb.pressed.connect(_on_buff_pressed.bind(i))
+
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
-		vb.add_child(row)
-
-		var lb := Label.new()
-		lb.add_theme_font_size_override("font_size", 14)
-		lb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(lb)
-
-		var bb := _mk_button("", 0.0, 30.0)
-		bb.add_theme_font_size_override("font_size", 13)
-		bb.pressed.connect(_on_buff_pressed.bind(i))
+		row.add_child(cell)
 		row.add_child(bb)
-		_retool_rows.append({"label": lb, "btn": bb, "idx": i})
+		grid.add_child(row)
+		_retool_rows.append({"name": name_lb, "stars": star_lb, "btn": bb, "idx": i})
 
 	var tip := Label.new()
 	tip.text = "技能点：击杀 Boss 300 / 重甲 50 / 小怪 1"
-	tip.add_theme_font_size_override("font_size", 12)
+	tip.add_theme_font_size_override("font_size", 11)
 	tip.add_theme_color_override("font_color", GameConfig.C_TEXT_DIM)
 	vb.add_child(tip)
+
+
+func _star_mark(lv: int, max_lv: int) -> String:
+	## 星级标记：实心星 = 已升层级，空心星 = 剩余层级
+	return "★".repeat(lv) + "☆".repeat(max_lv - lv)
 
 
 func _on_buff_pressed(i: int) -> void:
@@ -256,9 +286,20 @@ func _refresh_retool() -> void:
 		var i: int = item["idx"]
 		var def: Dictionary = GameConfig.RETOOL_BUFFS[i]
 		var lv: int = GameState.buff_level(i)
-		var maxed: bool = lv >= int(def["max_lv"])
-		item["label"].text = "%s（%d/%d）" % [def["name"], lv, int(def["max_lv"])]
+		item["name"].text = def["name"]
 		var bb: Button = item["btn"]
+
+		# 动作类（灭世）：无等级，按次消耗固定技能点
+		if def.get("action", false):
+			item["stars"].text = "已使用 %d 次" % lv
+			var acost: int = GameConfig.buff_cost(i, 0)
+			bb.text = "使用 %d 点" % acost
+			bb.disabled = GameState.skill_points < acost
+			continue
+
+		var max_lv: int = int(def["max_lv"])
+		var maxed: bool = lv >= max_lv
+		item["stars"].text = "%s %d/%d" % [_star_mark(lv, max_lv), lv, max_lv]
 		if maxed:
 			bb.text = "已满级"
 			bb.disabled = true
@@ -332,23 +373,82 @@ func _build_minimap() -> void:
 
 
 # ============================================================
+#  改造车间按钮（从建造栏单独拆出，排在小地图下方）
+# ============================================================
+func _build_retool_shop_button() -> void:
+	var def := GameConfig.build_def(GameConfig.Build.RETOOL)
+	var b := _mk_button("  %s %d" % [def["name"], int(def["cost"])], 160.0, 64.0)
+	b.name = "RetoolShopButton"
+	b.icon = Art.build_icon(GameConfig.Build.RETOOL, def["color"], 26)
+	b.tooltip_text = "%s（快捷键 %s）\n%s" % [def["name"], def["hotkey"], def["desc"]]
+	b.add_theme_font_size_override("font_size", 15)
+	b.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	b.offset_left = -178.0
+	b.offset_top = 240.0     # 紧贴小地图（小地图 70~230）下方
+	b.offset_right = -18.0
+	b.offset_bottom = 304.0
+	b.pressed.connect(func() -> void:
+		GameState.build_mode_changed.emit(GameConfig.Build.RETOOL))
+	_root.add_child(b)
+	_retool_btn = b
+	_style_retool_btn(false)   # 赋值之后再上色，否则函数会因 _retool_btn 为空直接返回
+
+
+func _style_retool_btn(selected: bool) -> void:
+	## 改造车间按钮常态就带自己的紫色调，选中时加粗高亮
+	if _retool_btn == null:
+		return
+	var col: Color = GameConfig.C_RETOOL
+	if selected:
+		_retool_btn.add_theme_stylebox_override("normal",
+				_btn_style(Color(0.16, 0.13, 0.24, 1.0), col, 2))
+		_retool_btn.add_theme_color_override("font_color", col)
+	else:
+		_retool_btn.add_theme_stylebox_override("normal",
+				_btn_style(Color(0.11, 0.10, 0.16, 0.95), Color(col.r, col.g, col.b, 0.55), 1))
+		_retool_btn.add_theme_color_override("font_color", Color(0.90, 0.86, 0.98))
+
+
+# ============================================================
+#  死神按钮（排布在改造车间按钮正下方）
+# ============================================================
+func _build_death_button() -> void:
+	var def := GameConfig.build_def(GameConfig.Build.DEATH)
+	var b := _mk_button("  %s %d" % [def["name"], int(def["cost"])], 160.0, 64.0)
+	b.name = "DeathButton"
+	b.icon = Art.build_icon(GameConfig.Build.DEATH, def["color"], 26)
+	b.tooltip_text = "%s（快捷键 %s）\n%s" % [def["name"], def["hotkey"], def["desc"]]
+	b.add_theme_font_size_override("font_size", 15)
+	b.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	b.offset_left = -178.0
+	b.offset_top = 312.0     # 改造车间按钮（240~304）正下方
+	b.offset_right = -18.0
+	b.offset_bottom = 376.0
+	b.pressed.connect(func() -> void:
+		GameState.build_mode_changed.emit(GameConfig.Build.DEATH))
+	_root.add_child(b)
+
+
+# ============================================================
 #  底部建造栏
 # ============================================================
 func _build_build_bar() -> void:
 	var bar := HBoxContainer.new()
 	bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	bar.offset_left = -602.0
-	bar.offset_right = 602.0
-	bar.offset_top = -112.0
-	bar.offset_bottom = -26.0
+	bar.offset_left = -428.0
+	bar.offset_right = 428.0
+	bar.offset_top = -96.0
+	bar.offset_bottom = -32.0
 	bar.alignment = BoxContainer.ALIGNMENT_CENTER
 	bar.add_theme_constant_override("separation", 12)
 	_root.add_child(bar)
 
-	for kind in [GameConfig.Build.TOWER, GameConfig.Build.MINE, GameConfig.Build.WALL, GameConfig.Build.FROST, GameConfig.Build.BARRICADE, GameConfig.Build.CANNON, GameConfig.Build.RETOOL, GameConfig.Build.FLAME]:
+	# 改造车间不在这里：它单独放在小地图下方（见 _build_retool_shop_button）
+	for kind in [GameConfig.Build.TOWER, GameConfig.Build.MINE, GameConfig.Build.WALL, GameConfig.Build.FROST, GameConfig.Build.BARRICADE, GameConfig.Build.CANNON, GameConfig.Build.FLAME]:
 		var def := GameConfig.build_def(kind)
-		var b := _mk_button("", 140.0, 78.0)
-		b.icon = Art.build_icon(kind, def["color"], 26)
+		var b := _mk_button("", 112.0, 64.0)
+		b.icon = Art.build_icon(kind, def["color"], 22)
+		b.add_theme_font_size_override("font_size", 14)
 		b.text = "  %s %d" % [def["name"], int(def["cost"])]
 		b.tooltip_text = "%s（快捷键 %s）\n%s" % [def["name"], def["hotkey"], def["desc"]]
 		var k: int = kind
@@ -358,12 +458,12 @@ func _build_build_bar() -> void:
 
 
 func _build_next_button() -> void:
-	_next_btn = _mk_button("下一波", 260.0, 44.0)
-	_next_btn.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_next_btn.offset_left = -130.0
-	_next_btn.offset_right = 130.0
-	_next_btn.offset_top = -166.0
-	_next_btn.offset_bottom = -122.0
+	_next_btn = _mk_button("下一波", 236.0, 44.0)
+	_next_btn.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_next_btn.offset_left = 18.0      # 左上：个人信息面板正下方
+	_next_btn.offset_right = 254.0
+	_next_btn.offset_top = 144.0
+	_next_btn.offset_bottom = 188.0
 	_next_btn.pressed.connect(func() -> void: GameState.next_wave_pressed.emit())
 	_root.add_child(_next_btn)
 
@@ -380,6 +480,7 @@ func _refresh_build_buttons(selected: int) -> void:
 			b.add_theme_stylebox_override("normal",
 					_btn_style(Color(0.10, 0.13, 0.17, 0.95), Color(0.22, 0.28, 0.36)))
 			b.add_theme_color_override("font_color", GameConfig.C_TEXT)
+	_style_retool_btn(selected == GameConfig.Build.RETOOL)
 
 
 # ============================================================
@@ -388,7 +489,7 @@ func _refresh_build_buttons(selected: int) -> void:
 func _build_sel_panel() -> void:
 	_sel_panel = PanelContainer.new()
 	_sel_panel.add_theme_stylebox_override("panel", _panel_style())
-	_sel_panel.position = Vector2(18, 134)
+	_sel_panel.position = Vector2(18, 196)   # 下一波按钮（144~188）下方
 	_sel_panel.custom_minimum_size = Vector2(236, 0)
 	_sel_panel.visible = false
 	_root.add_child(_sel_panel)
@@ -527,11 +628,46 @@ func _on_building_selected(b) -> void:
 			_sel_name.add_theme_color_override("font_color", GameConfig.C_BARRICADE)
 			_sel_l1.text = "嘲讽：路过的敌人都会攻击它"
 			_sel_l2.text = "血量比围墙高，替塔吸收火力"
+		GameConfig.Build.WALL_DOMAIN:
+			_sel_name.text = "绝对领域"
+			_sel_name.add_theme_color_override("font_color", GameConfig.C_WALL_DOMAIN)
+			_sel_l1.text = "主动承受 5×5 内建筑所受的攻击"
+			_sel_l2.text = "范围内建筑 5% 免伤"
+		GameConfig.Build.WALL_MEMORY:
+			_sel_name.text = "记忆之石"
+			_sel_name.add_theme_color_override("font_color", GameConfig.C_WALL_MEMORY)
+			_sel_l1.text = "每秒恢复 2 点生命值"
+			_sel_l2.text = "守住要道即可长期驻守"
+		GameConfig.Build.BARRICADE_TURTLE:
+			_sel_name.text = "龟壳"
+			_sel_name.add_theme_color_override("font_color", GameConfig.C_WALL_TURTLE)
+			_sel_l1.text = "每个攻击者 +5% 免伤，上限 50%"
+			_sel_l2.text = "围攻越多，越打不动"
+		GameConfig.Build.BARRICADE_THORNS:
+			_sel_name.text = "荆棘"
+			_sel_name.add_theme_color_override("font_color", GameConfig.C_WALL_THORNS)
+			_sel_l1.text = "受击时反弹附近敌人 0.5% 最大生命值伤害"
+			_sel_l2.text = "约 2 格半径内全部受反弹"
 		GameConfig.Build.RETOOL:
 			_sel_name.text = "改造车间"
 			_sel_name.add_theme_color_override("font_color", GameConfig.C_RETOOL)
 			_sel_l1.text = "5×5 功能建筑，靠近按 I 打开改造菜单"
 			_sel_l2.text = "易被敌人攻击，注意保护"
+		GameConfig.Build.DEATH:
+			_sel_name.text = "死神" + _lv_text(b)
+			_sel_name.add_theme_color_override("font_color", GameConfig.C_DEATH)
+			_sel_l1.text = "对 Boss %d%% 最大生命值（每级 +5%%）" % int(round(b.boss_pct() * 100.0))
+			_sel_l2.text = "全图索敌，秒杀 10×10 内非 Boss；3 级可分支进化"
+		GameConfig.Build.DEATH_SILO:
+			_sel_name.text = "核弹井"
+			_sel_name.add_theme_color_override("font_color", GameConfig.C_DEATH_SILO)
+			_sel_l1.text = "右键瞄准手动发射，对 Boss %d%%" % int(round(b.boss_pct() * 6.0 * 100.0))
+			_sel_l2.text = "冷却 3 分钟，打击面积 6 倍（约 24×24 格）"
+		GameConfig.Build.DEATH_FERRY:
+			_sel_name.text = "灵魂摆渡者"
+			_sel_name.add_theme_color_override("font_color", GameConfig.C_DEATH_FERRY)
+			_sel_l1.text = "灵魂 %d（右键释放，可 %d 次）" % [b.souls, b.soul_charges()]
+			_sel_l2.text = "灵魂冲击：全场 20%% 起（每多 100 灵魂 +1%%，Boss 上限 20%%），每 100 灵魂计 1 次（不消耗灵魂）"
 	_rebuild_branch_buttons()
 	_refresh_sel()
 
@@ -581,6 +717,16 @@ func _refresh_sel() -> void:
 		bb.visible = show_btns
 		if show_btns:
 			bb.disabled = not GameState.can_afford(btn_cost)
+
+	# 死神系动态信息：冷却 / 灵魂数每帧刷新
+	var k := int(_sel.kind)
+	if k == GameConfig.Build.DEATH:
+		_sel_l1.text = "对 Boss %d%% 最大生命值（每级 +5%%）" % int(round(_sel.boss_pct() * 100.0))
+	elif k == GameConfig.Build.DEATH_SILO:
+		var cd: float = _sel._cd
+		_sel_l1.text = "冷却就绪" if cd <= 0.0 else "冷却中 %d 秒" % int(ceil(cd))
+	elif k == GameConfig.Build.DEATH_FERRY:
+		_sel_l1.text = "灵魂 %d（右键释放，可 %d 次）" % [_sel.souls, _sel.soul_charges()]
 
 
 ## 按当前选中建筑重建"定型 / 改造"按钮：未定型满级塔 = 定型；已定型 + 有改造车间 = 改造

@@ -189,7 +189,7 @@ func _beam_process(delta: float) -> void:
 	_target.apply_freeze(0.15)   # 持续刷新冻结，把目标按在原地
 	var cap := _ramp_cap(_target)
 	var mul := 1.0 + minf(_lock_time * GameConfig.BEAM_RAMP, cap - 1.0)
-	_target.take_damage(GameConfig.BEAM_DPS * GameState.tower_dmg_mul * mul * delta)
+	_target.take_damage(GameConfig.BEAM_DPS * GameState.building_dmg_mul * mul * delta)
 
 
 ## 激光增伤上限：Boss 3 倍 / 精英怪（重甲）5 倍 / 其余敌人无上限
@@ -229,7 +229,7 @@ func _shoot(e: Node2D) -> void:
 		return
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position
-	p.setup(e, damage * GameState.tower_dmg_mul, proj_speed, tint, freeze_time)
+	p.setup(e, damage * GameState.building_dmg_mul, proj_speed, tint, freeze_time)
 	layer.add_child(p)
 	_pulse = 1.0
 
@@ -240,7 +240,7 @@ func _shoot_splash(pos: Vector2) -> void:
 		return
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position
-	p.setup_splash(pos, damage * GameState.tower_dmg_mul, proj_speed, tint, splash_radius,
+	p.setup_splash(pos, damage * GameState.building_dmg_mul, proj_speed, tint, splash_radius,
 			GameConfig.STORM_SLOW_TIME, GameConfig.STORM_SLOW_FACTOR)
 	layer.add_child(p)
 	_pulse = 1.0

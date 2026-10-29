@@ -1,5 +1,5 @@
 extends Building
-## 炮塔：重炮系防御塔，3 级后分支定型
+## 炮塔：重炮系塔，3 级后分支定型
 ##   · 基础形态：攻击射程内最近的敌人
 ##   · 重型炮：单发大量伤害，优先轰击血量上限最高的敌人
 ##   · 迫击炮：大射程曲射群伤，优先轰击敌人最密集处
@@ -228,7 +228,7 @@ func _shoot(e: Node2D) -> void:
 		return
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position + Vector2(cos(_aim), sin(_aim)) * 14.0
-	p.setup(e, damage * GameState.tower_dmg_mul, proj_speed, tint)
+	p.setup(e, damage * GameState.building_dmg_mul, proj_speed, tint)
 	layer.add_child(p)
 	_recoil = 5.0
 
@@ -239,7 +239,7 @@ func _shoot_pos(pos: Vector2) -> void:
 		return
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position + Vector2(cos(_aim), sin(_aim)) * 14.0
-	p.setup_splash(pos, damage * GameState.tower_dmg_mul, proj_speed, tint, splash_radius)
+	p.setup_splash(pos, damage * GameState.building_dmg_mul, proj_speed, tint, splash_radius)
 	layer.add_child(p)
 	_recoil = 5.0
 
