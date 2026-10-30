@@ -48,7 +48,6 @@ func _on_upgraded() -> void:
 #  满级分支：重型炮 / 迫击炮
 # ============================================================
 func can_branch() -> bool:
-	## 3 级且尚未分支时可选路线
 	return level >= max_level and kind == GameConfig.Build.CANNON
 
 
@@ -151,13 +150,13 @@ func _process(delta: float) -> void:
 		if _target_pos != Vector2.INF:
 			_aim = lerp_angle(_aim, global_position.angle_to_point(_target_pos),
 					clampf(delta * 10.0, 0.0, 1.0))
-			if _cd <= 0.0 and _in_range(_target_pos):
+			if not silenced() and _cd <= 0.0 and _in_range(_target_pos):
 				_cd = fire_interval
 				_shoot_pos(_target_pos)
 	elif _target != null and is_instance_valid(_target):
 		_aim = lerp_angle(_aim, global_position.angle_to_point(_target.global_position),
 				clampf(delta * 14.0, 0.0, 1.0))
-		if _cd <= 0.0 and _in_range(_target.global_position):
+		if not silenced() and _cd <= 0.0 and _in_range(_target.global_position):
 			_cd = fire_interval
 			_shoot(_target)
 
@@ -228,7 +227,7 @@ func _shoot(e: Node2D) -> void:
 		return
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position + Vector2(cos(_aim), sin(_aim)) * 14.0
-	p.setup(e, damage * GameState.building_dmg_mul, proj_speed, tint)
+	p.setup(e, damage * GameState.building_dmg_mul, proj_speed, tint, 0.0, self)
 	layer.add_child(p)
 	_recoil = 5.0
 
@@ -239,7 +238,8 @@ func _shoot_pos(pos: Vector2) -> void:
 		return
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position + Vector2(cos(_aim), sin(_aim)) * 14.0
-	p.setup_splash(pos, damage * GameState.building_dmg_mul, proj_speed, tint, splash_radius)
+	p.setup_splash(pos, damage * GameState.building_dmg_mul, proj_speed, tint,
+			splash_radius, 2.0 if awakened else 0.0, 0.4, self)
 	layer.add_child(p)
 	_recoil = 5.0
 

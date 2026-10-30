@@ -1,5 +1,6 @@
 extends Building
 ## 箭塔：自动索敌，向射程内最近的敌人发射弹丸
+## 满级分支二选一：快速射击箭塔（攻速极快）/ 大范围射击箭塔（射程扩大、伤害提升）
 
 const PROJ_SCENE := preload("res://scenes/entities/projectile.tscn")
 
@@ -43,7 +44,6 @@ func _on_upgraded() -> void:
 #  满级分支：快速射击 / 大范围射击
 # ============================================================
 func can_branch() -> bool:
-	## 3 级且尚未分支时可选路线（分支即改 kind，天然防重复分支）
 	return level >= max_level and kind == GameConfig.Build.TOWER
 
 
@@ -132,7 +132,7 @@ func _process(delta: float) -> void:
 	if _target != null and is_instance_valid(_target):
 		var want := global_position.angle_to_point(_target.global_position)
 		_aim = lerp_angle(_aim, want, clampf(delta * 14.0, 0.0, 1.0))
-		if _cd <= 0.0 and _in_range(_target):
+		if not silenced() and _cd <= 0.0 and _in_range(_target):
 			_cd = fire_interval
 			_shoot(_target)
 
@@ -166,7 +166,7 @@ func _shoot(e: Node2D) -> void:
 		return
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position + Vector2(cos(_aim), sin(_aim)) * 12.0
-	p.setup(e, damage * GameState.building_dmg_mul, proj_speed, tint)
+	p.setup(e, damage * GameState.building_dmg_mul, proj_speed, tint, 0.0, self)
 	layer.add_child(p)
 	_recoil = 5.0
 
@@ -180,29 +180,16 @@ func _draw() -> void:
 	draw_rect(Rect2(-half, -half, half * 2.0, half * 2.0), col.darkened(0.25), false, 2.0)
 	draw_circle(Vector2.ZERO, half * 0.62, Color(col.r, col.g, col.b, 0.16))
 
-	# 炮塔（朝目标方向，射击时后坐；分支外观：速射双联管 / 远程长管）
+	# 炮塔（三角，朝目标方向，射击时后坐）
 	var dir := Vector2(cos(_aim), sin(_aim))
 	var perp := Vector2(-dir.y, dir.x)
-	if kind == GameConfig.Build.TOWER_RAPID:
-		for s: float in [-1.0, 1.0]:
-			var off: Vector2 = perp * 3.6 * s
-			draw_colored_polygon(PackedVector2Array([
-				dir * (10.0 - _recoil) + off,
-				off + perp * 2.4 - dir * 4.0,
-				off - perp * 2.4 - dir * 4.0,
-			]), col)
-	else:
-		var barrel := 13.0
-		var half_w := 7.5
-		if kind == GameConfig.Build.TOWER_RANGE:
-			barrel = 16.0
-			half_w = 6.0
-		var tip := dir * (barrel - _recoil)
-		draw_colored_polygon(PackedVector2Array([
-			tip,
-			perp * half_w - dir * 5.0,
-			-perp * half_w - dir * 5.0,
-		]), col)
+	var tip := dir * (13.0 - _recoil)
+	var poly := PackedVector2Array([
+		tip,
+		perp * 7.5 - dir * 5.0,
+		-perp * 7.5 - dir * 5.0,
+	])
+	draw_colored_polygon(poly, col)
 	draw_circle(Vector2.ZERO, 4.0, col.lightened(0.45))
 
 	_draw_hp_bar(24.0, -half - 8.0)

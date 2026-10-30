@@ -147,6 +147,67 @@ const FERRY_BASE_PCT := 0.2           # 灵魂冲击：基础伤害（最大生�
 const FERRY_STEP_PCT := 0.01          # 每多 100 灵魂 +1%
 const FERRY_BOSS_CAP := 0.2           # 对 Boss 的伤害上限
 
+# ---------------- Boss 技能（按波次阶梯，每 10 波一种） ----------------
+const BOSS_SKILLS := ["enrage", "summon", "emp", "split", "shield", "corrode", "iceskin", "warlord", "wail", "final"]
+
+# ---------------- 塔觉醒（杀敌养成） ----------------
+## 家族 → 觉醒定义；分支形态共享家族进度与被动
+const AWAKEN := {
+	Build.TOWER: {"name": "穿甲弹头", "kills": 150, "cost": 800.0,
+		"desc": "命中附加破甲：目标 5 秒内受到的所有伤害 +25%"},
+	Build.FROST: {"name": "极寒领域", "kills": 80, "cost": 800.0,
+		"desc": "冰冻时长 ×2；冰冻中的敌人死亡时冰爆，冻结周围 2 格敌人 1 秒"},
+	Build.CANNON: {"name": "震地", "kills": 120, "cost": 1000.0,
+		"desc": "炮弹落点震击：范围内敌人减速 60% 持续 2 秒"},
+	Build.FLAME: {"name": "业火燎原", "kills": 250, "cost": 1200.0,
+		"desc": "灼烧提升至 3%/秒起（可吃加成），点燃时灼烧时长 +5 秒"},
+	Build.DEATH: {"name": "收割时刻", "kills": 300, "cost": 2000.0,
+		"desc": "单次炮弹击杀 ≥10 个敌人时，立即返还 10 秒冷却"},
+}
+
+
+## 分支形态 → 家族基础塔
+static func awaken_family(kind: int) -> int:
+	match kind:
+		Build.TOWER_RAPID, Build.TOWER_RANGE:
+			return Build.TOWER
+		Build.FROST_STORM, Build.FROST_BEAM:
+			return Build.FROST
+		Build.CANNON_HEAVY, Build.CANNON_MORTAR:
+			return Build.CANNON
+		Build.FLAME_BLAZE:
+			return Build.FLAME
+		Build.DEATH_SILO, Build.DEATH_FERRY:
+			return Build.DEATH
+	return kind
+
+
+static func awaken_def(kind: int) -> Dictionary:
+	return AWAKEN.get(awaken_family(kind), {})
+
+# ---------------- 仇恨值机制 ----------------
+const AGGRO_SCAN := 10                # 仇恨扫描的路径步数上限（BFS）
+const AGGRO_BASE := 4.0               # 大本营的仇恨权重（与武器塔同级）
+
+
+## 仇恨类型权重：路径距离相同时，权重高者更先被攻击
+## 路障 > 大本营 = 武器塔（箭塔 / 炮塔 / 寒冰塔 / 喷火器）> 死神塔 > 改造车间 > 金矿 > 城墙
+static func aggro_priority(kind: int) -> float:
+	match kind:
+		Build.BARRICADE, Build.BARRICADE_TURTLE, Build.BARRICADE_THORNS:
+			return 5.0   # 路障
+		Build.TOWER, Build.TOWER_RAPID, Build.TOWER_RANGE, Build.FROST, Build.FROST_STORM, \
+		Build.FROST_BEAM, Build.CANNON, Build.CANNON_HEAVY, Build.CANNON_MORTAR, \
+		Build.FLAME, Build.FLAME_BLAZE:
+			return 4.0   # 武器塔
+		Build.DEATH, Build.DEATH_SILO, Build.DEATH_FERRY:
+			return 3.0   # 死神塔
+		Build.RETOOL:
+			return 2.0   # 改造车间
+		Build.MINE:
+			return 1.0   # 金矿
+	return 0.0   # 城墙 / 城墙分支（绝对领域 / 记忆之石）
+
 
 # ---------------- 配色（极简低饱和 + 高辨识度）----------------
 const C_BG := Color(0.055, 0.067, 0.090)
@@ -499,6 +560,11 @@ static func enemy_def(type: String, wave: int) -> Dictionary:
 	var sp_mul := 1.0 + 0.012 * w
 	var dm_mul := 1.0 + 0.08 * w
 
+	# Boss 技能：每 10 波一种（10 波狂暴 → 100 波终焉魔王），其余敌人无技能
+	var skill := ""
+	if type == "boss":
+		skill = BOSS_SKILLS[clampi(wave / 10 - 1, 0, BOSS_SKILLS.size() - 1)]
+
 	return {
 		"type": type,
 		"hp": base["hp"] * hp_mul,
@@ -510,7 +576,7 @@ static func enemy_def(type: String, wave: int) -> Dictionary:
 		"color": base["color"],
 		"interval": 1.0,
 		"freeze_mul": base["freeze_mul"],
-		"breaker": base["breaker"],
+		"skill": skill,
 	}
 
 

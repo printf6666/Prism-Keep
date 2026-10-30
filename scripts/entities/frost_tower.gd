@@ -158,7 +158,7 @@ func _base_process(_delta: float) -> void:
 		_target = _acquire()
 
 	if _target != null and is_instance_valid(_target) \
-			and _cd <= 0.0 and _in_range(_target.global_position):
+			and not silenced() and _cd <= 0.0 and _in_range(_target.global_position):
 		_cd = fire_interval
 		_shoot(_target)
 
@@ -170,7 +170,7 @@ func _storm_process(_delta: float) -> void:
 		_target = _acquire()
 
 	if _target != null and is_instance_valid(_target) \
-			and _cd <= 0.0 and _in_range(_target.global_position):
+			and not silenced() and _cd <= 0.0 and _in_range(_target.global_position):
 		_cd = fire_interval
 		_shoot_splash(_target.global_position)
 
@@ -186,10 +186,10 @@ func _beam_process(delta: float) -> void:
 		return
 
 	_lock_time += delta
-	_target.apply_freeze(0.15)   # 持续刷新冻结，把目标按在原地
+	_target.apply_freeze(0.15 * (2.0 if awakened else 1.0))   # 持续刷新冻结（觉醒极寒领域 ×2）
 	var cap := _ramp_cap(_target)
 	var mul := 1.0 + minf(_lock_time * GameConfig.BEAM_RAMP, cap - 1.0)
-	_target.take_damage(GameConfig.BEAM_DPS * GameState.building_dmg_mul * mul * delta)
+	_target.take_damage(GameConfig.BEAM_DPS * GameState.building_dmg_mul * mul * delta, self)
 
 
 ## 激光增伤上限：Boss 3 倍 / 精英怪（重甲）5 倍 / 其余敌人无上限
@@ -229,7 +229,8 @@ func _shoot(e: Node2D) -> void:
 		return
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position
-	p.setup(e, damage * GameState.building_dmg_mul, proj_speed, tint, freeze_time)
+	p.setup(e, damage * GameState.building_dmg_mul, proj_speed, tint,
+			freeze_time * (2.0 if awakened else 1.0), self)
 	layer.add_child(p)
 	_pulse = 1.0
 
@@ -241,7 +242,7 @@ func _shoot_splash(pos: Vector2) -> void:
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position
 	p.setup_splash(pos, damage * GameState.building_dmg_mul, proj_speed, tint, splash_radius,
-			GameConfig.STORM_SLOW_TIME, GameConfig.STORM_SLOW_FACTOR)
+			GameConfig.STORM_SLOW_TIME, GameConfig.STORM_SLOW_FACTOR, self)
 	layer.add_child(p)
 	_pulse = 1.0
 

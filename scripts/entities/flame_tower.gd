@@ -46,7 +46,6 @@ func _on_upgraded() -> void:
 #  满级分支：烈炎塔 / 熔岩塔
 # ============================================================
 func can_branch() -> bool:
-	## 3 级且尚未分支时可选路线
 	return level >= max_level and kind == GameConfig.Build.FLAME
 
 
@@ -59,7 +58,6 @@ func branch_cost() -> float:
 
 
 func branch_to(new_kind: int) -> bool:
-	## 二选一定型：改 kind / 配色 / 数值并封顶，之后不可再升级
 	if not can_branch():
 		return false
 	if not branch_options().has(new_kind):
@@ -79,7 +77,6 @@ func branch_to(new_kind: int) -> bool:
 
 
 func _apply_branch(new_kind: int) -> void:
-	## 按分支重置数值：先回到基础值按等级成长，再应用分支特性（改造换分支也走这里）
 	kind = new_kind
 	damage = _base_damage * pow(1.5, float(level - 1))
 	range_cells = _base_range + float(level - 1)
@@ -95,7 +92,6 @@ func _apply_branch(new_kind: int) -> void:
 
 
 func can_retrofit() -> bool:
-	## 已定型且场上存在改造车间时可改为另一分支
 	return kind != GameConfig.Build.FLAME and level >= max_level \
 			and Board.has_kind(GameConfig.Build.RETOOL)
 
@@ -109,7 +105,6 @@ func retrofit_options() -> Array:
 
 
 func retrofit_to(new_kind: int) -> bool:
-	## 付费改为另一分支（保留等级，费用 = 分支定型价）
 	if not can_retrofit() or not retrofit_options().has(new_kind):
 		return false
 	if not GameState.try_spend(retrofit_cost()):
@@ -147,7 +142,7 @@ func _cone_process(delta: float) -> void:
 	if _target != null and is_instance_valid(_target):
 		_aim = lerp_angle(_aim, global_position.angle_to_point(_target.global_position),
 				clampf(delta * 10.0, 0.0, 1.0))
-		if _cd <= 0.0 and _in_range(_target.global_position):
+		if not silenced() and _cd <= 0.0 and _in_range(_target.global_position):
 			_cd = fire_interval
 			_breath = 1.0
 			_cone_attack()
@@ -162,7 +157,7 @@ func _magma_process(delta: float) -> void:
 	if _target_pos != Vector2.INF:
 		_aim = lerp_angle(_aim, global_position.angle_to_point(_target_pos),
 				clampf(delta * 10.0, 0.0, 1.0))
-		if _cd <= 0.0 and _in_range(_target_pos):
+		if not silenced() and _cd <= 0.0 and _in_range(_target_pos):
 			_cd = fire_interval
 			_breath = 1.0
 			_shoot_pool(_target_pos)
@@ -189,7 +184,7 @@ func _acquire() -> Node2D:
 	return best
 
 
-## 迫击炮式索敌：溅射圈内敌人最多的落点
+## 熔岩式索敌：溅射圈内敌人最多的落点
 func _acquire_cluster_point() -> Vector2:
 	var list := get_tree().get_nodes_in_group("enemies")
 	var best_pos := Vector2.INF
@@ -210,7 +205,7 @@ func _acquire_cluster_point() -> Vector2:
 	return best_pos
 
 
-## 扇形攻击：45° 锥内所有敌人吃直接伤害并点燃
+## 扇形攻击：45° 锥内所有敌人吃直接伤害并点燃（业火燎原觉醒：灼烧 3% 起并延长）
 func _cone_attack() -> void:
 	var reach := _range_px()
 	var half := deg_to_rad(GameConfig.FLAME_CONE_DEG * 0.5)
@@ -222,8 +217,9 @@ func _cone_attack() -> void:
 			continue
 		if absf(wrapf(to.angle() - _aim, -PI, PI)) > half:
 			continue
-		e.take_damage(damage * GameState.building_dmg_mul)
-		e.apply_burn(GameConfig.BURN_PCT + GameState.burn_bonus, GameConfig.BURN_TIME)
+		e.take_damage(damage * GameState.building_dmg_mul, self)
+		var bpct: float = (0.03 if awakened else GameConfig.BURN_PCT) + GameState.burn_bonus
+		e.apply_burn(bpct, GameConfig.BURN_TIME, self, 5.0 if awakened else 0.0)
 
 
 func _shoot_pool(pos: Vector2) -> void:
@@ -232,7 +228,7 @@ func _shoot_pool(pos: Vector2) -> void:
 		return
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position + Vector2(cos(_aim), sin(_aim)) * 14.0
-	p.setup_pool(pos, 420.0, tint, GameConfig.MAGMA_POOL_RADIUS, GameConfig.MAGMA_POOL_TIME)
+	p.setup_pool(pos, 420.0, tint, GameConfig.MAGMA_POOL_RADIUS, GameConfig.MAGMA_POOL_TIME, self)
 	layer.add_child(p)
 
 

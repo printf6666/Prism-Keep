@@ -1,4 +1,4 @@
-extends Node2D
+﻿extends Node2D
 ## 岩浆池：熔岩塔投掷落地后生成，覆盖半径内敌人持续施加灼烧
 ## 岩浆中的灼烧比例为基础灼烧 × LAVA_BURN_MUL（含技能点加成翻倍），离开后残留一段时间
 
@@ -9,9 +9,11 @@ var _life := 0.0
 var _pct := -1.0        # >=0 时直接使用该灼烧比例（核辐射），否则按岩浆公式（基础 × 2 + 加成翻倍）
 var _tint := Color(0)   # a > 0 时使用自定义配色（核辐射绿），否则默认岩浆红
 var is_lava := true     # 是否为熔岩岩浆（核辐射不是；水深火热只认岩浆）
+var built_by = null     # 建造者（灼烧击杀归属）
 
 
-func setup(pos: Vector2, r: float, t: float, pct := -1.0, tint := Color(0), lava := true) -> void:
+func setup(pos: Vector2, r: float, t: float, pct := -1.0, tint := Color(0), lava := true,
+		built_by = null) -> void:
 	position = pos
 	radius = r
 	time_left = t
@@ -19,6 +21,7 @@ func setup(pos: Vector2, r: float, t: float, pct := -1.0, tint := Color(0), lava
 	_pct = pct
 	_tint = tint
 	is_lava = lava
+	self.built_by = built_by
 
 
 func _process(delta: float) -> void:
@@ -37,7 +40,7 @@ func _process(delta: float) -> void:
 			if e.dead:
 				continue
 			if global_position.distance_squared_to(e.global_position) <= r2:
-				e.apply_burn(pct, GameConfig.LAVA_BURN_TIME)
+				e.apply_burn(pct, GameConfig.LAVA_BURN_TIME, built_by)
 				if is_lava:
 					e.lava_stamp = Time.get_ticks_msec()   # 盖章：水深火热的"身处岩浆"凭据
 	queue_redraw()

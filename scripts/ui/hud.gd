@@ -27,6 +27,7 @@ var _up_btn: Button
 var _sell_btn: Button
 var _branch_box: VBoxContainer
 var _branch_btns: Array = []
+var _awaken_btn: Button
 
 var _toast: Label
 var _toast_t := 0.0
@@ -536,6 +537,13 @@ func _build_sel_panel() -> void:
 	vb.add_child(bvb)
 	_branch_box = bvb
 
+	# 觉醒按钮（3 级定型 + 杀敌达标后出现）
+	_awaken_btn = _mk_button("", 0.0, 32.0)
+	_awaken_btn.add_theme_font_size_override("font_size", 12)
+	_awaken_btn.visible = false
+	_awaken_btn.pressed.connect(_on_awaken_pressed)
+	vb.add_child(_awaken_btn)
+
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	vb.add_child(row)
@@ -718,6 +726,15 @@ func _refresh_sel() -> void:
 		if show_btns:
 			bb.disabled = not GameState.can_afford(btn_cost)
 
+	# 觉醒按钮：3 级定型 + 会攻击的塔 + 未觉醒
+	var adef: Dictionary = GameConfig.awaken_def(_sel.kind)
+	var show_aw: bool = not adef.is_empty() and not _sel.awakened and _sel.level >= _sel.max_level
+	_awaken_btn.visible = show_aw
+	if show_aw:
+		_awaken_btn.text = "觉醒·%s（%d/%d 杀敌 · %d 金）" \
+				% [adef["name"], _sel.kills, int(adef["kills"]), int(adef["cost"])]
+		_awaken_btn.disabled = _sel.kills < int(adef["kills"]) or not GameState.can_afford(adef["cost"])
+
 	# 死神系动态信息：冷却 / 灵魂数每帧刷新
 	var k := int(_sel.kind)
 	if k == GameConfig.Build.DEATH:
@@ -758,6 +775,15 @@ func _rebuild_branch_buttons() -> void:
 		bb.pressed.connect(_on_branch_pressed.bind(k))
 		_branch_box.add_child(bb)
 		_branch_btns.append({"btn": bb, "kind": k})
+
+
+func _on_awaken_pressed() -> void:
+	if _sel == null or not is_instance_valid(_sel):
+		return
+	if _sel.awaken():
+		var adef := GameConfig.awaken_def(int(_sel.kind))
+		GameState.notice.emit("已觉醒：%s" % adef["name"])
+		_on_building_selected(_sel)
 
 
 func _on_branch_pressed(new_kind: int) -> void:

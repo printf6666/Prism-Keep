@@ -20,6 +20,7 @@ var pool_time := 0.0
 var death_payload := false     # >0 = 死神炮弹：秒杀非 Boss + 核辐射池
 var death_boss_pct := -1.0     # 死神炮弹对 Boss 的伤害比例（<0 用默认值）
 var giant := false             # 巨型核弹（灭世）：更大的弹体与爆炸
+var shooter = null             # 发射来源（击杀归属 / 觉醒效果）
 
 var _dir := Vector2.RIGHT
 
@@ -28,16 +29,17 @@ func _ready() -> void:
 	z_index = 5
 
 
-func setup(t: Node2D, dmg: float, spd: float, col: Color, freeze_dur := 0.0) -> void:
+func setup(t: Node2D, dmg: float, spd: float, col: Color, freeze_dur := 0.0, from = null) -> void:
 	target = t
 	damage = dmg
 	speed = spd
 	tint = col
 	freeze = freeze_dur
+	shooter = from
 
 
 func setup_splash(pos: Vector2, dmg: float, spd: float, col: Color, radius: float,
-		slow_dur := 0.0, slow_mul := 1.0) -> void:
+		slow_dur := 0.0, slow_mul := 1.0, from = null) -> void:
 	target = null
 	target_pos = pos
 	damage = dmg
@@ -46,9 +48,10 @@ func setup_splash(pos: Vector2, dmg: float, spd: float, col: Color, radius: floa
 	splash_radius = radius
 	slow_duration = slow_dur
 	slow_factor = slow_mul
+	shooter = from
 
 
-func setup_pool(pos: Vector2, spd: float, col: Color, radius: float, time: float) -> void:
+func setup_pool(pos: Vector2, spd: float, col: Color, radius: float, time: float, from = null) -> void:
 	## 落点生成岩浆池（熔岩塔）：落地不造成直接伤害
 	target = null
 	target_pos = pos
@@ -56,10 +59,11 @@ func setup_pool(pos: Vector2, spd: float, col: Color, radius: float, time: float
 	tint = col
 	pool_radius = radius
 	pool_time = time
+	shooter = from
 
 
 func setup_death(pos: Vector2, spd: float, col: Color, radius: float, time: float,
-		boss_pct := -1.0, is_giant := false) -> void:
+		boss_pct := -1.0, is_giant := false, from = null) -> void:
 	## 死神炮弹：落地秒杀范围内非 Boss 敌人（Boss 按 boss_pct 受伤），并留下核辐射池
 	target = null
 	target_pos = pos
@@ -70,6 +74,7 @@ func setup_death(pos: Vector2, spd: float, col: Color, radius: float, time: floa
 	death_payload = true
 	death_boss_pct = boss_pct
 	giant = is_giant
+	shooter = from
 
 
 func _process(delta: float) -> void:
@@ -84,9 +89,16 @@ func _process(delta: float) -> void:
 		var step := speed * delta
 
 		if dist <= step + 4.0:
-			target.take_damage(damage)
+			target.take_damage(damage, shooter)
 			if freeze > 0.0 and target.has_method("apply_freeze"):
 				target.apply_freeze(freeze)
+			# 觉醒命中效果：箭塔破甲 / 炮塔震击
+			if shooter != null and is_instance_valid(shooter) and shooter.get("awakened"):
+				var fam := GameConfig.awaken_family(int(shooter.kind))
+				if fam == GameConfig.Build.TOWER and target.has_method("apply_break"):
+					target.apply_break(5.0)
+				elif fam == GameConfig.Build.CANNON and target.has_method("apply_slow"):
+					target.apply_slow(2.0, 0.4)
 			queue_free()
 			return
 
@@ -108,30 +120,38 @@ func _explode() -> void:
 		var pool := POOL_SCENE.instantiate()
 		if death_payload:
 			pool.setup(global_position, pool_radius, pool_time,
-					GameConfig.DEATH_RADIATION_PCT, Color(0.45, 0.75, 0.20), false)
+					GameConfig.DEATH_RADIATION_PCT, Color(0.45, 0.75, 0.20), false, shooter)
 		else:
-			pool.setup(global_position, pool_radius, pool_time)
+			pool.setup(global_position, pool_radius, pool_time, -1.0, Color(0), true, shooter)
 		get_parent().add_child(pool)
 
 	if death_payload:
 		# 死神：范围内非 Boss 直接秒杀，Boss 按 boss_pct 受伤
 		var bpct := death_boss_pct if death_boss_pct >= 0.0 else GameConfig.DEATH_BOSS_DMG_PCT
 		var kr2 := pool_radius * pool_radius
+		var killed := 0
 		for e in get_tree().get_nodes_in_group("enemies"):
 			if e.dead:
 				continue
 			if global_position.distance_squared_to(e.global_position) <= kr2:
+				var was_dead: bool = e.dead
 				if String(e.type) == "boss":
-					e.take_damage(e.max_hp * bpct)
+					e.take_damage(e.max_hp * bpct, shooter)
 				else:
-					e.take_damage(1.0e9)
+					e.take_damage(1.0e9, shooter)
+				if not was_dead and e.dead:
+					killed += 1
+		# 收割时刻（死神觉醒）：单发击杀 ≥10 个返还 10 秒冷却
+		if killed >= 10 and shooter != null and is_instance_valid(shooter) \
+				and shooter.has_method("refund_cooldown"):
+			shooter.refund_cooldown(10.0)
 	elif splash_radius > 0.0:
 		var r2 := splash_radius * splash_radius
 		for e in get_tree().get_nodes_in_group("enemies"):
 			if e.dead:
 				continue
 			if global_position.distance_squared_to(e.global_position) <= r2:
-				e.take_damage(damage)
+				e.take_damage(damage, shooter)
 				if slow_duration > 0.0 and e.has_method("apply_slow"):
 					e.apply_slow(slow_duration, slow_factor)
 	var fx := FX_SCENE.instantiate() as BurstFx

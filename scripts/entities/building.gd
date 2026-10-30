@@ -10,6 +10,10 @@ var kind := 0
 var is_wall := false
 var barricade := false  # 路障标记（围墙变体，add_child 前设置，_ready 按它初始化）
 var domain := false     # 绝对领域标记（城墙分支：嘲讽 + 代塔承伤 + 塔免伤光环）
+var kills := 0          # 觉醒击杀数（3 级定型后开始统计）
+var awakened := false   # 是否已觉醒
+var silence_left := 0.0 # 被沉默剩余时间（Boss EMP / 亡语）：停止攻击
+var silence_cd := 0.0   # 沉默免疫剩余时间
 var max_hp := 100.0
 var hp := 100.0
 var tint := Color.WHITE
@@ -140,6 +144,35 @@ func _process(delta: float) -> void:
 	if _up_pulse > 0.0:
 		_up_pulse = maxf(0.0, _up_pulse - delta * 2.0)
 		queue_redraw()
+	# 被沉默（Boss EMP / 亡语）：停止攻击，灰化提示
+	if silence_left > 0.0 or silence_cd > 0.0:
+		silence_left = maxf(0.0, silence_left - delta)
+		silence_cd = maxf(0.0, silence_cd - delta)
+		queue_redraw()
+
+
+func silenced() -> bool:
+	return silence_left > 0.0
+
+
+## 击杀归属（塔觉醒养成）：3 级定型 + 会攻击的塔才计数
+func register_kill() -> void:
+	if awakened or not GameConfig.is_weapon_tower(kind):
+		return
+	if level < max_level:
+		return
+	kills += 1
+
+
+## 觉醒：杀敌数达标 + 支付金币，解锁家族专属被动
+func awaken() -> bool:
+	var adef := GameConfig.awaken_def(kind)
+	if adef.is_empty() or awakened or kills < int(adef["kills"]):
+		return false
+	if not GameState.try_spend(adef["cost"]):
+		return false
+	awakened = true
+	return true
 
 
 func _destroy() -> void:
@@ -160,6 +193,8 @@ func _spawn_fx() -> void:
 func _body_color(base: Color) -> Color:
 	if _flash > 0.0:
 		return base.lerp(Color(1, 1, 1), _flash * 0.75)
+	if silenced():
+		return base.lerp(Color(0.55, 0.55, 0.58), 0.6)   # 被沉默：灰化
 	return base
 
 
