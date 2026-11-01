@@ -10,9 +10,9 @@ config_version=5
 
 [application]
 
-config/name="Prism Keep"
-config/description="A minimal geometric tower defense. Hold the core for 100 waves."
-run/main_scene="res://scenes/main.tscn"
+config/name="无妄之灾"
+config/description="末日塔防「无妄之灾」：坚守 100 波，塔在人在。"
+run/main_scene="res://scenes/start_menu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 

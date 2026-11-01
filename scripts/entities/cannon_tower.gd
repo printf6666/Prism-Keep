@@ -131,7 +131,7 @@ func retrofit_to(new_kind: int) -> bool:
 
 func _process(delta: float) -> void:
 	super._process(delta)
-	_cd -= delta
+	_cd -= delta * cd_speed
 	_scan_cd -= delta
 	_recoil = maxf(0.0, _recoil - delta * 60.0)
 

@@ -27,7 +27,7 @@ const PLAYER_SPEED := 230.0            # 角色移动速度（像素/秒）
 const PLAYER_RADIUS := 9.0
 
 # ---------------- 建筑类型 ----------------
-enum Build { TOWER, MINE, WALL, FROST, TOWER_RAPID, TOWER_RANGE, BARRICADE, CANNON, CANNON_HEAVY, CANNON_MORTAR, FROST_STORM, FROST_BEAM, RETOOL, FLAME, FLAME_BLAZE, MAGMA, WALL_DOMAIN, WALL_MEMORY, BARRICADE_TURTLE, BARRICADE_THORNS, DEATH, DEATH_SILO, DEATH_FERRY }
+enum Build { TOWER, MINE, WALL, FROST, TOWER_RAPID, TOWER_RANGE, BARRICADE, CANNON, CANNON_HEAVY, CANNON_MORTAR, FROST_STORM, FROST_BEAM, RETOOL, FLAME, FLAME_BLAZE, MAGMA, WALL_DOMAIN, WALL_MEMORY, BARRICADE_TURTLE, BARRICADE_THORNS, DEATH, DEATH_SILO, DEATH_FERRY, PLANT }
 
 # ---------------- 升级 / 拆除 ----------------
 const MAX_LEVEL := 3                # 塔最高等级
@@ -111,7 +111,7 @@ const WALL_BRANCH_COST := 40.0        # 城墙分支定型费用
 const BARRICADE_BRANCH_COST := 60.0   # 路障分支定型费用
 const DOMAIN_REDUCTION := 0.05        # 绝对领域：范围内建筑的免伤比例
 const DOMAIN_SIZE := 5                # 绝对领域覆盖格数（5×5）
-const MEMORY_REGEN := 2.0             # 记忆之石：每秒恢复生命
+const MEMORY_REGEN := 5.0             # 记忆之石：每秒恢复 3×3 内所有塔各 5 点生命
 const TURTLE_REDUCTION := 0.05        # 龟壳：每个攻击者提供的免伤
 const TURTLE_CAP := 0.5               # 龟壳免伤上限
 const THORNS_PCT := 0.005             # 荆棘：反弹附近敌人最大生命值的比例
@@ -191,7 +191,7 @@ const AGGRO_BASE := 4.0               # 大本营的仇恨权重（与武器塔�
 
 
 ## 仇恨类型权重：路径距离相同时，权重高者更先被攻击
-## 路障 > 大本营 = 武器塔（箭塔 / 炮塔 / 寒冰塔 / 喷火器）> 死神塔 > 改造车间 > 金矿 > 城墙
+## 路障 > 大本营 = 武器塔（箭塔 / 炮塔 / 寒冰塔 / 喷火器）> 死神塔 > 金矿 > 改造车间 > 城墙
 static func aggro_priority(kind: int) -> float:
 	match kind:
 		Build.BARRICADE, Build.BARRICADE_TURTLE, Build.BARRICADE_THORNS:
@@ -202,10 +202,10 @@ static func aggro_priority(kind: int) -> float:
 			return 4.0   # 武器塔
 		Build.DEATH, Build.DEATH_SILO, Build.DEATH_FERRY:
 			return 3.0   # 死神塔
-		Build.RETOOL:
-			return 2.0   # 改造车间
 		Build.MINE:
 			return 1.0   # 金矿
+		Build.RETOOL:
+			return 0.5   # 改造车间（仇恨很低：除非贴脸且周围没别的目标，否则不会被攻击）
 	return 0.0   # 城墙 / 城墙分支（绝对领域 / 记忆之石）
 
 
@@ -277,6 +277,25 @@ static func build_def(kind: int) -> Dictionary:
 	def["weapon"] = not NON_WEAPON.has(kind)
 	def["range"] = def.get("range", -1.0)
 	return def
+
+
+# ---------------- 英雄（玩家角色） ----------------
+const HEROES := {
+	"flame_fist": {"name": "炎拳", "color": Color(0.90, 0.35, 0.15), "skill_cd": 180.0,
+		"active": true, "desc": "主动 [Q]：全场敌人被点燃并陷入易伤（受到的伤害 ×2），持续 15 秒。冷却 3 分钟"},
+	"forest_lord": {"name": "森之主", "color": Color(0.40, 0.80, 0.35), "skill_cd": 300.0,
+		"active": true, "desc": "主动 [Q]：立刻在身边部署 4 座植物炮塔（单发 12 / 0.8s，射程 4 格），持续 60 秒。冷却 5 分钟"},
+	"saintess": {"name": "圣女", "color": Color(0.95, 0.85, 0.50), "skill_cd": 0.0,
+		"active": false, "desc": "被动：以自身为中心 5×5 内的塔攻速 +10%、每秒恢复 2 点生命、5% 免伤"},
+}
+
+const PLANT_DAMAGE := 12.0            # 植物炮塔单发伤害
+const PLANT_INTERVAL := 0.8           # 植物炮塔射击间隔（秒）
+const PLANT_RANGE := 4.0              # 植物炮塔射程（格）
+const PLANT_LIFETIME := 60.0          # 植物炮塔存在时长（秒）
+const SAINT_REGEN := 2.0              # 圣女光环：每秒恢复生命
+const SAINT_HASTE := 1.1              # 圣女光环：攻速加成（冷却流逝倍率）
+const SAINT_REDUCTION := 0.05         # 圣女光环：免伤比例
 
 
 ## 不会攻击的建筑（其余定义默认视为会攻击的塔）
@@ -405,7 +424,7 @@ static func _build_def(kind: int) -> Dictionary:
 				"color": C_RETOOL,
 				"scene": "res://scenes/entities/retool_shop.tscn",
 				"footprint": Vector2i(5, 5),
-				"desc": "5×5 功能建筑，易被敌人攻击：靠近按 I 用技能点购买全局加成；也可改造已定型塔的分支",
+				"desc": "5×5 功能建筑，仇恨很低（敌人一般不会主动攻击）：靠近按 I 用技能点购买全局加成；也可改造已定型塔的分支",
 			}
 		Build.FLAME:
 			return {
@@ -451,7 +470,7 @@ static func _build_def(kind: int) -> Dictionary:
 				"cost": WALL_BRANCH_COST,
 				"color": C_WALL_MEMORY,
 				"scene": "res://scenes/entities/wall.tscn",
-				"desc": "满级城墙分支：每秒恢复 2 点生命值",
+				"desc": "满级城墙分支：每秒恢复以自身为中心 3×3 内所有塔各 5 点生命",
 			}
 		Build.BARRICADE_TURTLE:
 			return {
@@ -500,6 +519,16 @@ static func _build_def(kind: int) -> Dictionary:
 				"scene": "res://scenes/entities/death_tower.tscn",
 				"footprint": Vector2i(6, 6),
 				"desc": "死神分支：击杀收集灵魂（精英 2 / Boss 5 / 小怪 1），标题栏右键开火；每 100 灵魂计 1 次释放（灵魂不消耗），右键释放全场 20% 最大生命值冲击",
+			}
+		Build.PLANT:
+			return {
+				"name": "植物炮塔",
+				"hotkey": "",
+				"cost": 0.0,
+				"color": Color(0.45, 0.85, 0.35),
+				"scene": "res://scenes/entities/plant_tower.tscn",
+				"range": PLANT_RANGE,
+				"desc": "森之主召唤的临时炮塔，60 秒后枯萎",
 			}
 	return {}
 

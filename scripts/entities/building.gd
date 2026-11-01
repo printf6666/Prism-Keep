@@ -14,6 +14,8 @@ var kills := 0          # 觉醒击杀数（3 级定型后开始统计）
 var awakened := false   # 是否已觉醒
 var silence_left := 0.0 # 被沉默剩余时间（Boss EMP / 亡语）：停止攻击
 var silence_cd := 0.0   # 沉默免疫剩余时间
+var cd_speed := 1.0     # 攻速倍率（圣女光环：1.1 = 冷却流逝快 10%）
+var saint_stamp := -100000  # 圣女光环盖章（免伤 5% 凭据）
 var max_hp := 100.0
 var hp := 100.0
 var tint := Color.WHITE
@@ -45,6 +47,9 @@ func take_damage(amount: float, attacker = null) -> void:
 		return
 	# 绝对领域：领域内的建筑受击减免（所有建筑都属于塔的范畴）
 	amount *= 1.0 - Board.domain_reduction_at(cell)
+	# 圣女光环：光环内 5% 免伤
+	if saint_guard_active():
+		amount *= 1.0 - GameConfig.SAINT_REDUCTION
 	hp -= amount
 	_flash = 1.0
 	queue_redraw()
@@ -153,6 +158,11 @@ func _process(delta: float) -> void:
 
 func silenced() -> bool:
 	return silence_left > 0.0
+
+
+## 圣女光环免伤：玩家（圣女）5×5 内的建筑受击减免
+func saint_guard_active() -> bool:
+	return Time.get_ticks_msec() - saint_stamp < 500
 
 
 ## 击杀归属（塔觉醒养成）：3 级定型 + 会攻击的塔才计数

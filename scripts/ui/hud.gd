@@ -31,6 +31,9 @@ var _awaken_btn: Button
 
 var _toast: Label
 var _toast_t := 0.0
+var _hero_panel: PanelContainer
+var _hero_name: Label
+var _hero_status: Label
 
 var _retool_panel: PanelContainer
 var _sp_label: Label
@@ -63,6 +66,7 @@ func _ready() -> void:
 	_build_death_button()
 	_build_build_bar()
 	_build_next_button()
+	_build_hero_box()
 	_build_toast()
 	_build_overlay()
 	_wire()
@@ -74,9 +78,62 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_refresh_sel()
+	_refresh_hero_box(delta)
 	if _toast_t > 0.0:
 		_toast_t -= delta
 		_toast.modulate.a = clampf(_toast_t / 0.5, 0.0, 1.0)
+
+
+# ============================================================
+#  英雄技能状态框（左下角）
+# ============================================================
+func _build_hero_box() -> void:
+	_hero_panel = PanelContainer.new()
+	_hero_panel.name = "HeroBox"
+	_hero_panel.add_theme_stylebox_override("panel", _panel_style())
+	_hero_panel.position = Vector2(18, 556)
+	_hero_panel.custom_minimum_size = Vector2(190, 0)
+	_root.add_child(_hero_panel)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 4)
+	_hero_panel.add_child(vb)
+
+	_hero_name = Label.new()
+	_hero_name.add_theme_font_size_override("font_size", 15)
+	vb.add_child(_hero_name)
+
+	_hero_status = Label.new()
+	_hero_status.add_theme_font_size_override("font_size", 13)
+	vb.add_child(_hero_status)
+
+
+func _refresh_hero_box(_delta: float) -> void:
+	var hero: Dictionary = GameConfig.HEROES.get(GameState.hero_id, {})
+	if hero.is_empty():
+		_hero_panel.visible = false
+		return
+	_hero_panel.visible = true
+	_hero_name.text = "英雄 · %s" % hero["name"]
+	_hero_name.add_theme_color_override("font_color", hero["color"])
+
+	var player = get_tree().get_first_node_in_group("player")
+	if player == null or not is_instance_valid(player):
+		_hero_status.text = "待命"
+		return
+
+	if not hero.get("active", false):
+		_hero_status.text = "[Q] 光环持续生效中"
+		_hero_status.add_theme_color_override("font_color", GameConfig.C_OK)
+		return
+
+	var cd: float = player.hero_cd
+	if cd > 0.0:
+		_hero_status.text = "[Q] 冷却 %d 秒" % int(ceil(cd))
+		_hero_status.add_theme_color_override("font_color", GameConfig.C_TEXT_DIM)
+	else:
+		_hero_status.text = "[Q] 就绪"
+		_hero_status.add_theme_color_override("font_color", GameConfig.C_OK)
 
 
 # ============================================================
@@ -644,7 +701,7 @@ func _on_building_selected(b) -> void:
 		GameConfig.Build.WALL_MEMORY:
 			_sel_name.text = "记忆之石"
 			_sel_name.add_theme_color_override("font_color", GameConfig.C_WALL_MEMORY)
-			_sel_l1.text = "每秒恢复 2 点生命值"
+			_sel_l1.text = "每秒恢复 3×3 内所有塔各 5 点生命"
 			_sel_l2.text = "守住要道即可长期驻守"
 		GameConfig.Build.BARRICADE_TURTLE:
 			_sel_name.text = "龟壳"
@@ -660,7 +717,7 @@ func _on_building_selected(b) -> void:
 			_sel_name.text = "改造车间"
 			_sel_name.add_theme_color_override("font_color", GameConfig.C_RETOOL)
 			_sel_l1.text = "5×5 功能建筑，靠近按 I 打开改造菜单"
-			_sel_l2.text = "易被敌人攻击，注意保护"
+			_sel_l2.text = "仇恨很低，敌人一般不会主动攻击"
 		GameConfig.Build.DEATH:
 			_sel_name.text = "死神" + _lv_text(b)
 			_sel_name.add_theme_color_override("font_color", GameConfig.C_DEATH)

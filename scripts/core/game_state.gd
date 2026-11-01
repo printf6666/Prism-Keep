@@ -31,6 +31,7 @@ var wall_hp_mul := 1.0       # 加成 2：围墙 / 路障血量倍率
 var mine_income_bonus := 0.0 # 加成 3：金矿每次产出额外金币
 var burn_bonus := 0.0        # 加成 4：灼烧额外比例（岩浆中翻倍）
 var retool_menu_open := false
+var hero_id := "flame_fist"   # 开始界面选择的英雄
 
 
 func reset() -> void:

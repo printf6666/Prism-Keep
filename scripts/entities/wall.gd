@@ -75,10 +75,14 @@ func _apply_branch(new_kind: int) -> void:
 
 func _process(delta: float) -> void:
 	super._process(delta)
-	# 记忆之石：每秒恢复 2 点生命
-	if memory and hp > 0.0 and hp < max_hp:
-		hp = minf(hp + GameConfig.MEMORY_REGEN * delta, max_hp)
-		queue_redraw()
+	# 记忆之石：每秒恢复以自身为中心 3×3 内所有塔各 5 点生命（含自身，仅治疗未满血的）
+	if memory:
+		var amount := GameConfig.MEMORY_REGEN * delta
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				var b = Board.get_building(cell + Vector2i(dx, dy))
+				if b != null and is_instance_valid(b) and b.hp > 0.0 and b.hp < b.max_hp:
+					b.hp = minf(b.hp + amount, b.max_hp)
 	# 龟壳：攻击者超过 2.5 秒未攻击则不再计层
 	if turtle and not _attackers.is_empty():
 		var now := Time.get_ticks_msec() * 0.001

@@ -42,6 +42,7 @@ var dire := false          # 水深火热：减速 × 岩浆同时生效 → 负
 var lava_stamp := -100000  # 最近一次身处岩浆的时间戳（岩浆池每 0.5s 盖章）
 var burn_source = null     # 点燃来源（灼烧击杀归属，觉醒养成）
 var broken_left := 0.0     # 破甲剩余时间（箭塔觉醒）：受到的伤害 +25%
+var vuln_left := 0.0       # 易伤剩余时间（炎拳技能）：受到的伤害 ×2
 var armor_left := 0.0      # 召唤物落地减伤剩余时间
 var armor_mul := 1.0       # 减伤期间受伤倍率
 var last_attacker = null   # 最近一次攻击来源（觉醒击杀归属）
@@ -118,6 +119,14 @@ func apply_break(duration: float) -> void:
 	queue_redraw()
 
 
+func apply_vuln(duration: float) -> void:
+	## 被炎拳之怒命中：受到的所有伤害 ×2
+	if dead:
+		return
+	vuln_left = maxf(vuln_left, duration)
+	queue_redraw()
+
+
 func apply_burn(pct: float, duration: float, source = null, extend := 0.0) -> void:
 	## 被点燃：每秒燃烧最大生命值的 pct；重复点燃取更强比例与更久时间
 	## extend：业火燎原觉醒的额外延长
@@ -174,9 +183,11 @@ func _process(delta: float) -> void:
 		if dead:
 			return
 
-	# 破甲 / 落地减伤计时
+	# 破甲 / 易伤 / 落地减伤计时
 	if broken_left > 0.0:
 		broken_left = maxf(0.0, broken_left - delta)
+	if vuln_left > 0.0:
+		vuln_left = maxf(0.0, vuln_left - delta)
 	if armor_left > 0.0:
 		armor_left = maxf(0.0, armor_left - delta)
 
@@ -430,6 +441,9 @@ func take_damage(amount: float, _attacker = null, from_burn := false) -> void:
 	# 破甲（箭塔觉醒）：受到的伤害 +25%
 	if broken_left > 0.0:
 		amount *= 1.25
+	# 易伤（炎拳之怒）：受到的伤害 ×2
+	if vuln_left > 0.0:
+		amount *= 2.0
 	if _attacker != null:
 		last_attacker = _attacker
 	hp -= amount
@@ -516,6 +530,8 @@ func _draw() -> void:
 		col = col.lerp(Color(1.0, 0.45, 0.10), 0.50)
 	elif slow_left > 0.0:
 		col = col.lerp(Color(0.62, 0.88, 1.0), 0.30)
+	elif vuln_left > 0.0:
+		col = col.lerp(Color(0.95, 0.85, 0.30), 0.35)
 
 	# 呼吸感：轻微缩放（冻结时定住）
 	var s := 1.0

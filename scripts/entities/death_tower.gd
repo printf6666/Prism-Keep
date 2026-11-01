@@ -225,7 +225,7 @@ func _pick_apocalypse_target(used: Array) -> Vector2:
 # ============================================================
 func _process(delta: float) -> void:
 	super._process(delta)
-	_cd -= delta
+	_cd -= delta * cd_speed
 	_scan_cd -= delta
 	_pulse = maxf(0.0, _pulse - delta * 2.0)
 
