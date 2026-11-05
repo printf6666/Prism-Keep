@@ -33,8 +33,10 @@ func _process(delta: float) -> void:
 	_tick -= delta
 	if _tick <= 0.0:
 		_tick = 0.5
+		# 岩浆灼烧吃"特效强化"词条（熔岩塔属喷火系）；核辐射走 _pct 直通，不受词条影响
 		var pct: float = _pct if _pct >= 0.0 \
-				else (GameConfig.BURN_PCT + GameState.burn_bonus) * GameConfig.LAVA_BURN_MUL
+				else (GameConfig.BURN_PCT + GameState.burn_bonus) \
+						* GameConfig.LAVA_BURN_MUL * GameState.effect_mul
 		var r2 := radius * radius
 		for e in get_tree().get_nodes_in_group("enemies"):
 			if e.dead:

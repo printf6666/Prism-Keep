@@ -218,7 +218,9 @@ func _cone_attack() -> void:
 		if absf(wrapf(to.angle() - _aim, -PI, PI)) > half:
 			continue
 		e.take_damage(damage * GameState.building_dmg_mul, self)
-		var bpct: float = (0.03 if awakened else GameConfig.BURN_PCT) + GameState.burn_bonus
+		# 特效词条：喷火系灼烧强度随词条倍率提升
+		var bpct: float = ((0.03 if awakened else GameConfig.BURN_PCT)
+				+ GameState.burn_bonus) * GameState.effect_mul
 		e.apply_burn(bpct, GameConfig.BURN_TIME, self, 5.0 if awakened else 0.0)
 
 

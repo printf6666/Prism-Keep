@@ -459,10 +459,13 @@ func _die() -> void:
 	match type:
 		"boss":
 			GameState.add_skill_points(GameConfig.SP_BOSS)
+			GameState.add_essence(GameConfig.ESSENCE_BOSS)
 		"tank":
 			GameState.add_skill_points(GameConfig.SP_ELITE)
+			GameState.add_essence(GameConfig.ESSENCE_ELITE)
 		_:
 			GameState.add_skill_points(GameConfig.SP_MOB)
+			GameState.add_essence(GameConfig.ESSENCE_MOB)
 	GameState.enemy_killed.emit(String(type))
 
 	# 击杀归属（塔觉醒养成）
@@ -498,6 +501,13 @@ func _die() -> void:
 	fx.tint = color
 	fx.max_radius = radius * 2.2
 	get_parent().add_child(fx)
+
+	# 掉落晶源的小青环（与死亡特效同点，稍小，提示"这里有晶源入账"）
+	var ef := FX_SCENE.instantiate() as BurstFx
+	ef.position = position
+	ef.tint = GameConfig.C_BASE
+	ef.max_radius = radius * 1.2
+	get_parent().add_child(ef)
 	queue_free()
 
 

@@ -227,7 +227,8 @@ func _shoot(e: Node2D) -> void:
 		return
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position + Vector2(cos(_aim), sin(_aim)) * 14.0
-	p.setup(e, damage * GameState.building_dmg_mul, proj_speed, tint, 0.0, self)
+	p.setup(e, damage * GameState.building_dmg_mul * GameState.cannon_dmg_mul,
+			proj_speed, tint, 0.0, self)
 	layer.add_child(p)
 	_recoil = 5.0
 
@@ -238,8 +239,8 @@ func _shoot_pos(pos: Vector2) -> void:
 		return
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position + Vector2(cos(_aim), sin(_aim)) * 14.0
-	p.setup_splash(pos, damage * GameState.building_dmg_mul, proj_speed, tint,
-			splash_radius, 2.0 if awakened else 0.0, 0.4, self)
+	p.setup_splash(pos, damage * GameState.building_dmg_mul * GameState.cannon_dmg_mul,
+			proj_speed, tint, splash_radius, 2.0 if awakened else 0.0, 0.4, self)
 	layer.add_child(p)
 	_recoil = 5.0
 

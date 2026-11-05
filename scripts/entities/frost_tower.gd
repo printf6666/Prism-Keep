@@ -230,7 +230,7 @@ func _shoot(e: Node2D) -> void:
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position
 	p.setup(e, damage * GameState.building_dmg_mul, proj_speed, tint,
-			freeze_time * (2.0 if awakened else 1.0), self)
+			freeze_time * (2.0 if awakened else 1.0) * GameState.effect_mul, self)
 	layer.add_child(p)
 	_pulse = 1.0
 
@@ -242,7 +242,7 @@ func _shoot_splash(pos: Vector2) -> void:
 	var p := PROJ_SCENE.instantiate() as Projectile
 	p.global_position = global_position
 	p.setup_splash(pos, damage * GameState.building_dmg_mul, proj_speed, tint, splash_radius,
-			GameConfig.STORM_SLOW_TIME, GameConfig.STORM_SLOW_FACTOR, self)
+			GameConfig.STORM_SLOW_TIME * GameState.effect_mul, GameConfig.STORM_SLOW_FACTOR, self)
 	layer.add_child(p)
 	_pulse = 1.0
 

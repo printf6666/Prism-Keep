@@ -120,7 +120,8 @@ func retrofit_to(new_kind: int) -> bool:
 
 func _process(delta: float) -> void:
 	super._process(delta)
-	_cd -= delta * cd_speed
+	# 攻速词条：只加速箭塔系（快速射击 / 大范围分支共用本脚本，天然一并生效）
+	_cd -= delta * cd_speed * GameState.arrow_haste
 	_scan_cd -= delta
 	_recoil = maxf(0.0, _recoil - delta * 60.0)
 

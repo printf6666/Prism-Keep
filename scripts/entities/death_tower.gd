@@ -118,7 +118,7 @@ func try_manual_action(world_pos: Vector2) -> bool:
 			return true
 		_cd = GameConfig.SILO_COOLDOWN
 		var r: float = GameConfig.DEATH_RADIUS * sqrt(GameConfig.SILO_AREA_MUL)
-		_fire_shell(world_pos, r, GameConfig.DEATH_RADIATION_TIME,
+		_fire_shell(world_pos, r, GameState.radiation_time(),
 				boss_pct() * GameConfig.SILO_BOSS_MUL)
 		_aim = global_position.angle_to_point(world_pos)
 		_pulse = 1.0
@@ -243,7 +243,7 @@ func _process(delta: float) -> void:
 		_cd = fire_interval
 		_pulse = 1.0
 		_fire_shell(_target_pos, GameConfig.DEATH_RADIUS,
-				GameConfig.DEATH_RADIATION_TIME, boss_pct())
+				GameState.radiation_time(), boss_pct())
 
 	queue_redraw()
 

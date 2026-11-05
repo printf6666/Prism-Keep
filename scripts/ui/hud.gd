@@ -4,6 +4,7 @@ extends CanvasLayer
 var _root: Control
 
 var _gold_label: Label
+var _essence_label: Label
 var _wave_label: Label
 var _hp_bar: ProgressBar
 var _hp_fill: StyleBoxFlat
@@ -39,6 +40,10 @@ var _retool_panel: PanelContainer
 var _sp_label: Label
 var _retool_rows: Array = []
 
+var _affix_panel: PanelContainer
+var _affix_essence_label: Label
+var _affix_rows: Array = []
+
 var _overlay: Control
 var _result_label: Label
 var _result_sub: Label
@@ -60,6 +65,7 @@ func _ready() -> void:
 	_build_info()
 	_build_sel_panel()
 	_build_retool_panel()
+	_build_affix_panel()
 	_build_top_right()
 	_build_minimap()
 	_build_retool_shop_button()
@@ -72,6 +78,7 @@ func _ready() -> void:
 	_wire()
 
 	_on_gold(GameState.gold)
+	_on_essence(GameState.essence)
 	_on_base(GameState.base_hp, GameState.base_hp_max)
 	_on_wave(GameState.wave, GameState.total_waves)
 
@@ -212,6 +219,11 @@ func _build_info() -> void:
 	_gold_label.add_theme_font_size_override("font_size", 23)
 	_gold_label.add_theme_color_override("font_color", GameConfig.C_MINE)
 	vb.add_child(_gold_label)
+
+	_essence_label = Label.new()
+	_essence_label.add_theme_font_size_override("font_size", 15)
+	_essence_label.add_theme_color_override("font_color", GameConfig.C_BASE)
+	vb.add_child(_essence_label)
 
 	_wave_label = Label.new()
 	_wave_label.add_theme_font_size_override("font_size", 16)
@@ -364,6 +376,128 @@ func _refresh_retool() -> void:
 		else:
 			bb.text = "升级 %d" % GameConfig.buff_cost(i, lv)
 			bb.disabled = GameState.skill_points < GameConfig.buff_cost(i, lv)
+
+
+# ============================================================
+#  基地词条商店（靠近大本营按 B 打开，屏幕右侧）
+# ============================================================
+func _build_affix_panel() -> void:
+	_affix_panel = PanelContainer.new()
+	_affix_panel.name = "AffixPanel"
+	# 紧凑内边距：五条词条要放进死神按钮（376）与建造栏（642）之间，标准边距会顶到建造栏
+	var sb := _panel_style()
+	sb.content_margin_left = 12.0
+	sb.content_margin_right = 12.0
+	sb.content_margin_top = 8.0
+	sb.content_margin_bottom = 8.0
+	_affix_panel.add_theme_stylebox_override("panel", sb)
+	_affix_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_affix_panel.offset_left = -288.0    # 死神按钮（312~376）正下方
+	_affix_panel.offset_right = -18.0
+	_affix_panel.offset_top = 384.0
+	_affix_panel.grow_vertical = Control.GROW_DIRECTION_END
+	_affix_panel.visible = false
+	_root.add_child(_affix_panel)
+
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 4)
+	_affix_panel.add_child(vb)
+
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	vb.add_child(head)
+
+	var title := Label.new()
+	title.text = "◆ 基地 · 词条商店"
+	title.add_theme_font_size_override("font_size", 15)
+	title.add_theme_color_override("font_color", GameConfig.C_BASE)
+	head.add_child(title)
+
+	_affix_essence_label = Label.new()
+	_affix_essence_label.add_theme_font_size_override("font_size", 13)
+	_affix_essence_label.add_theme_color_override("font_color", GameConfig.C_BASE)
+	head.add_child(_affix_essence_label)
+
+	var grid := GridContainer.new()
+	grid.columns = 1   # 单列：每条词条占一整行，购买按钮贴面板右缘（窄面板双列会把按钮挤出屏幕）
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 3)
+	vb.add_child(grid)
+
+	for i in GameConfig.AFFIXES.size():
+		var def: Dictionary = GameConfig.AFFIXES[i]
+		var cell := VBoxContainer.new()
+		cell.add_theme_constant_override("separation", 0)
+		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+		var name_lb := Label.new()
+		name_lb.add_theme_font_size_override("font_size", 12)
+		name_lb.add_theme_color_override("font_color", GameConfig.C_TEXT)
+		cell.add_child(name_lb)
+
+		var star_lb := Label.new()
+		star_lb.add_theme_font_size_override("font_size", 11)
+		star_lb.add_theme_color_override("font_color", GameConfig.C_BASE)
+		cell.add_child(star_lb)
+
+		var bb := _mk_button("", 78.0, 30.0)
+		bb.add_theme_font_size_override("font_size", 11)
+		bb.tooltip_text = def.get("desc", "")
+		bb.pressed.connect(_on_affix_pressed.bind(i))
+
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		row.add_child(cell)
+		row.add_child(bb)
+		grid.add_child(row)
+		_affix_rows.append({"name": name_lb, "stars": star_lb, "btn": bb, "idx": i})
+
+	var tip := Label.new()
+	# 单行脚注：两行会顶到建造栏
+	tip.text = "晶源掉落：Boss 25 / 重甲 5 / 小怪 1"
+	tip.add_theme_font_size_override("font_size", 10)
+	tip.add_theme_color_override("font_color", GameConfig.C_TEXT_DIM)
+	tip.tooltip_text = "每条词条只强化对应塔系"
+	vb.add_child(tip)
+
+
+func _on_affix_pressed(i: int) -> void:
+	GameState.buy_affix(i)   # 失败（晶源不足）时按钮本就置灰；成功后信号触发刷新
+
+
+func _on_affix_menu(open: bool) -> void:
+	_affix_panel.visible = open
+	if open:
+		_refresh_affix()
+
+
+func _on_essence(v: int) -> void:
+	_essence_label.text = "晶源  %d" % v
+	if _affix_panel != null and _affix_panel.visible:
+		_refresh_affix()
+
+
+func _on_affix_changed() -> void:
+	if _affix_panel != null and _affix_panel.visible:
+		_refresh_affix()
+
+
+func _refresh_affix() -> void:
+	_affix_essence_label.text = "晶源 %d" % GameState.essence
+	for item in _affix_rows:
+		var i: int = item["idx"]
+		var def: Dictionary = GameConfig.AFFIXES[i]
+		var lv: int = GameState.affix_level(i)
+		var max_lv: int = int(def["max_lv"])
+		item["name"].text = def["name"]
+		item["stars"].text = "%s %d/%d" % [_star_mark(lv, max_lv), lv, max_lv]
+		var bb: Button = item["btn"]
+		if lv >= max_lv:
+			bb.text = "已满级"
+			bb.disabled = true
+		else:
+			bb.text = "购买 %d" % GameConfig.affix_cost(i, lv)
+			bb.disabled = GameState.essence < GameConfig.affix_cost(i, lv)
 
 
 # ============================================================
@@ -952,6 +1086,9 @@ func _wire() -> void:
 	GameState.game_finished.connect(_on_finished)
 	GameState.skill_changed.connect(_on_skill_changed)
 	GameState.retool_menu_toggled.connect(_on_retool_menu)
+	GameState.essence_changed.connect(_on_essence)
+	GameState.affix_shop_toggled.connect(_on_affix_menu)
+	GameState.affix_changed.connect(_on_affix_changed)
 
 	var wm := get_tree().get_first_node_in_group("wave_manager")
 	if wm != null:

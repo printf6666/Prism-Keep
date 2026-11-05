@@ -93,6 +93,31 @@ static func buff_cost(i: int, lv: int) -> int:
 	return int(def["base_cost"]) * (lv + 1)
 
 
+# ---------------- 晶源 / 基地词条商店 ----------------
+## 晶源：怪物死亡掉落的新货币，只能在大本营购买词条
+const ESSENCE_MOB := 1                # 小怪（普通 / 疾行）掉落晶源
+const ESSENCE_ELITE := 5              # 精英怪（重甲）掉落晶源
+const ESSENCE_BOSS := 25              # Boss 掉落晶源
+## 词条：每条只作用于一个塔系（买满 5 级的强度递进，费用 = 基础价 ×（当前级 + 1））
+const AFFIXES := [
+	{"id": "cannon_dmg", "name": "炮塔伤害 +15%", "base_cost": 20, "max_lv": 5,
+		"desc": "炮塔系（炮塔 / 重型炮 / 迫击炮）造成的伤害提升 15%"},
+	{"id": "wall_hp", "name": "壁垒血量 +20%", "base_cost": 12, "max_lv": 5,
+		"desc": "围墙 / 路障系（含各分支）血量提升 20%，已建成的立即按比例回补"},
+	{"id": "arrow_haste", "name": "箭塔攻速 +10%", "base_cost": 25, "max_lv": 5,
+		"desc": "箭塔系（快速射击 / 大范围分支同样生效）攻击速度提升 10%"},
+	{"id": "effect", "name": "特效强化 +20%", "base_cost": 30, "max_lv": 5,
+		"desc": "寒冰系冰冻 / 减速时长与喷火系灼烧强度提升 20%"},
+	{"id": "rad_time", "name": "辐射延时 +4秒", "base_cost": 50, "max_lv": 5,
+		"desc": "死神系（核弹井手动发射同样生效）核辐射持续时间延长 4 秒"},
+]
+
+
+static func affix_cost(i: int, lv: int) -> int:
+	## 第 i 条词条从 lv 升到 lv + 1 的晶源费用（逐级递增）
+	return int(AFFIXES[i]["base_cost"]) * (lv + 1)
+
+
 # ---------------- 灼烧 / 喷火器 ----------------
 const BURN_PCT := 0.01                # 基础灼烧：每秒燃烧最大生命值的比例
 const BURN_TIME := 10.0               # 灼烧持续时间（秒）

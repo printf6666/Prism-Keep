@@ -1,7 +1,9 @@
 extends Node2D
 ## 大本营：地图正中央的 2x2 核心，外圈环形血条实时反映剩余血量
+## 玩家靠近时提示按 B 打开词条商店（用晶源购买全局词条）
 
 var _t := 0.0
+var _player_near := false
 
 
 func _ready() -> void:
@@ -16,7 +18,17 @@ func _on_base_changed(_hp: float, _max_hp: float) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	_player_near = _check_player_near()
 	queue_redraw()
+
+
+func _check_player_near() -> bool:
+	var p := get_tree().get_first_node_in_group("player")
+	if p == null or not is_instance_valid(p):
+		return false
+	var c := Board.cell_of(p.global_position)
+	return c.x >= GameConfig.BASE_CELL.x - 1 and c.x <= GameConfig.BASE_CELL.x + GameConfig.BASE_SIZE \
+			and c.y >= GameConfig.BASE_CELL.y - 1 and c.y <= GameConfig.BASE_CELL.y + GameConfig.BASE_SIZE
 
 
 func _draw() -> void:
@@ -52,3 +64,9 @@ func _draw() -> void:
 	elif hp_p <= 0.55:
 		hp_col = Color(1.0, 0.78, 0.28)
 	draw_arc(Vector2.ZERO, r, -PI * 0.5, -PI * 0.5 + TAU * hp_p, 64, hp_col, 4.0, true)
+
+	# 靠近提示：按 B 打开词条商店（商店开着时不再提示）
+	if _player_near and not GameState.affix_shop_open:
+		var a := 0.55 + 0.35 * pulse
+		draw_string(ThemeDB.fallback_font, Vector2(-90.0, -half - 18.0), "按 B 打开词条商店",
+				HORIZONTAL_ALIGNMENT_CENTER, 180, 13, Color(core.r, core.g, core.b, a))

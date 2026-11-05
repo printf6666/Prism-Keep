@@ -106,6 +106,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				GameState.build_mode_changed.emit(-1)
 				_clear_selection()
 				GameState.set_retool_menu(false)
+				GameState.set_affix_shop(false)
 
 
 func _set_mode(kind: int) -> void:

@@ -2,6 +2,7 @@ extends Node2D
 ## 玩家角色 / 英雄单位
 ## - WASD 自由移动，视角跟着角色走，移动方向即面朝方向
 ## - 碰撞：除路障外所有建筑都挡人；路障对角色是“可穿过”的（敌人仍会被它挡住）
+## - 靠近大本营按 B：打开 / 关闭词条商店（用晶源购买全局词条）
 ## - 英雄系统（开始界面选择，存于 GameState.hero_id）：
 ##     炎拳   [Q] 全场点燃 + 易伤 ×2（15 秒），冷却 3 分钟
 ##     森之主 [Q] 部署 4 座植物炮塔（60 秒），冷却 5 分钟
@@ -53,7 +54,18 @@ func _process(delta: float) -> void:
 	if hero_id == "saintess":
 		_saint_aura(delta)
 
+	# 词条商店开着时走远 → 自动关闭
+	if GameState.affix_shop_open and not near_base():
+		GameState.set_affix_shop(false)
+
 	queue_redraw()
+
+
+func near_base() -> bool:
+	## 是否站在大本营占地范围外一圈以内（B 键打开词条商店的范围）
+	var c := Board.cell_of(global_position)
+	return c.x >= GameConfig.BASE_CELL.x - 1 and c.x <= GameConfig.BASE_CELL.x + GameConfig.BASE_SIZE \
+			and c.y >= GameConfig.BASE_CELL.y - 1 and c.y <= GameConfig.BASE_CELL.y + GameConfig.BASE_SIZE
 
 
 ## 圣女被动光环：以玩家为中心 5×5 内的塔——冷却流逝 ×1.1、回血 2/秒、免伤盖章
@@ -125,6 +137,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		var k := event as InputEventKey
 		if k.keycode == KEY_Q:
 			_cast_skill()
+		elif k.keycode == KEY_B and near_base():
+			GameState.set_affix_shop(not GameState.affix_shop_open)
 
 
 func _walkable(p: Vector2) -> bool:
