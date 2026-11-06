@@ -22,6 +22,15 @@ func place(c: Vector2i) -> void:
 		income *= GameConfig.RICH_INCOME_MUL   # 大金矿：产出翻倍
 
 
+func _save_extra() -> Dictionary:
+	return {"income": income, "_t": _t}
+
+
+func _restore_extra(d: Dictionary) -> void:
+	income = float(d.get("income", income))
+	_t = float(d.get("_t", _t))
+
+
 func _process(delta: float) -> void:
 	super._process(delta)
 	_pulse = maxf(0.0, _pulse - delta * 2.2)

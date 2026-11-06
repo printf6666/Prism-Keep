@@ -1,12 +1,13 @@
 extends Building
 ## 植物炮塔：森之主召唤的临时炮塔，向射程内最近的敌人发射种子弹
-## 60 秒后枯萎消失（不留残骸，直接消散）
+## 存在一段时间后枯萎消失（不留残骸，直接消散）
+## 火力与驻留时长来自森之主的局外升级线（MetaManager）
 
 const PROJ_SCENE := preload("res://scenes/entities/projectile.tscn")
 
-var lifetime := GameConfig.PLANT_LIFETIME
+var lifetime := 45.0
 var range_cells := GameConfig.PLANT_RANGE
-var damage := GameConfig.PLANT_DAMAGE
+var damage := 9.0
 var fire_interval := GameConfig.PLANT_INTERVAL
 
 var _cd := 0.0
@@ -22,6 +23,8 @@ func _ready() -> void:
 	max_hp = 120.0
 	hp = max_hp
 	max_level = 1   # 不可升级
+	damage = MetaManager.hero_value("forest_lord", 0)      # 植物火力
+	lifetime = MetaManager.hero_value("forest_lord", 1)    # 驻留时长
 	_cd = randf() * 0.3
 	_scan_cd = randf() * 0.1
 	_sway = randf() * TAU

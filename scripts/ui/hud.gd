@@ -5,6 +5,7 @@ var _root: Control
 
 var _gold_label: Label
 var _essence_label: Label
+var _soul_label: Label
 var _wave_label: Label
 var _hp_bar: ProgressBar
 var _hp_fill: StyleBoxFlat
@@ -32,6 +33,8 @@ var _awaken_btn: Button
 
 var _toast: Label
 var _toast_t := 0.0
+var _save_toast: Label
+var _save_t := 0.0
 var _hero_panel: PanelContainer
 var _hero_name: Label
 var _hero_status: Label
@@ -79,6 +82,7 @@ func _ready() -> void:
 
 	_on_gold(GameState.gold)
 	_on_essence(GameState.essence)
+	_on_souls(MetaManager.souls)
 	_on_base(GameState.base_hp, GameState.base_hp_max)
 	_on_wave(GameState.wave, GameState.total_waves)
 
@@ -89,6 +93,9 @@ func _process(delta: float) -> void:
 	if _toast_t > 0.0:
 		_toast_t -= delta
 		_toast.modulate.a = clampf(_toast_t / 0.5, 0.0, 1.0)
+	if _save_t > 0.0:
+		_save_t -= delta
+		_save_toast.modulate.a = clampf(_save_t / 0.6, 0.0, 1.0)
 
 
 # ============================================================
@@ -224,6 +231,11 @@ func _build_info() -> void:
 	_essence_label.add_theme_font_size_override("font_size", 15)
 	_essence_label.add_theme_color_override("font_color", GameConfig.C_BASE)
 	vb.add_child(_essence_label)
+
+	_soul_label = Label.new()
+	_soul_label.add_theme_font_size_override("font_size", 15)
+	_soul_label.add_theme_color_override("font_color", GameConfig.C_ENEMY_BOSS)
+	vb.add_child(_soul_label)
 
 	_wave_label = Label.new()
 	_wave_label.add_theme_font_size_override("font_size", 16)
@@ -475,6 +487,10 @@ func _on_essence(v: int) -> void:
 	_essence_label.text = "晶源  %d" % v
 	if _affix_panel != null and _affix_panel.visible:
 		_refresh_affix()
+
+
+func _on_souls(v: int) -> void:
+	_soul_label.text = "星辉  %d" % v
 
 
 func _on_affix_changed() -> void:
@@ -1018,6 +1034,19 @@ func _build_toast() -> void:
 	_toast.modulate.a = 0.0
 	_root.add_child(_toast)
 
+	# 自动存档提示（波次边界触发，青蓝色，比警告提示更低调）
+	_save_toast = Label.new()
+	_save_toast.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_save_toast.offset_left = -220.0
+	_save_toast.offset_right = 220.0
+	_save_toast.offset_top = 128.0
+	_save_toast.offset_bottom = 152.0
+	_save_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_save_toast.add_theme_font_size_override("font_size", 14)
+	_save_toast.add_theme_color_override("font_color", GameConfig.C_BASE)
+	_save_toast.modulate.a = 0.0
+	_root.add_child(_save_toast)
+
 
 func _build_overlay() -> void:
 	_overlay = Control.new()
@@ -1089,6 +1118,8 @@ func _wire() -> void:
 	GameState.essence_changed.connect(_on_essence)
 	GameState.affix_shop_toggled.connect(_on_affix_menu)
 	GameState.affix_changed.connect(_on_affix_changed)
+	SaveManager.saved.connect(_on_saved)
+	MetaManager.souls_changed.connect(_on_souls)
 
 	var wm := get_tree().get_first_node_in_group("wave_manager")
 	if wm != null:
@@ -1143,12 +1174,20 @@ func _on_notice(text: String) -> void:
 	_toast.modulate.a = 1.0
 
 
+func _on_saved(wave: int) -> void:
+	_save_toast.text = "✓ 已自动存档 · 第 %d 波清空" % wave
+	_save_t = 2.0
+	_save_toast.modulate.a = 1.0
+
+
 func _on_finished(win: bool) -> void:
 	_overlay.visible = true
 	if win:
 		_result_label.text = "防守成功"
 		_result_label.add_theme_color_override("font_color", GameConfig.C_OK)
 		_result_sub.text = "挡住了全部 %d 波敌人" % GameState.total_waves
+		if GameState.last_soul_gain > 0:
+			_result_sub.text += " · 星辉 +%d" % GameState.last_soul_gain
 	else:
 		_result_label.text = "大本营失守"
 		_result_label.add_theme_color_override("font_color", GameConfig.C_BAD)

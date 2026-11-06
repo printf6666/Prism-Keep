@@ -12,9 +12,11 @@ var _font: SystemFont
 var _bg: TextureRect
 var _time := 0.0
 var _start_btn: Button
+var _continue_btn: Button
 var _hero_btn: Button
 var _online_btn: Button
 var _quit_btn: Button
+var _clear_btn: Button
 var _hero_lb: Label
 var _toast: Label
 var _toast_t := 0.0
@@ -28,6 +30,7 @@ func _ready() -> void:
 	])
 	_build_background()
 	_build_ui()
+	_refresh_save_state()
 
 
 func _process(delta: float) -> void:
@@ -125,25 +128,34 @@ func _build_ui() -> void:
 	tag.add_theme_color_override("font_color", Color(0.62, 0.55, 0.48, 0.9))
 	add_child(tag)
 
-	# 四枚按钮
-	_start_btn = _make_btn("开 始 游 戏", Rect2(530, 430, 220, 56), 23,
+	# 五枚按钮（继续游戏在读档前保持置灰）
+	_start_btn = _make_btn("开 始 游 戏", Rect2(530, 414, 220, 52), 22,
 			Color(0.78, 0.22, 0.14))
 	_start_btn.pressed.connect(_start_game)
 
-	_hero_btn = _make_btn("英 雄 选 择", Rect2(530, 496, 220, 48), 18,
+	_continue_btn = _make_btn("继 续 游 戏", Rect2(530, 470, 220, 46), 18,
+			Color(0.36, 0.78, 0.96))
+	_continue_btn.pressed.connect(_continue_game)
+
+	_hero_btn = _make_btn("英 雄 选 择", Rect2(530, 520, 220, 40), 17,
 			Color(0.92, 0.56, 0.20))
 	_hero_btn.pressed.connect(_open_hero_select)
 
-	_online_btn = _make_btn("联 机 模 式", Rect2(530, 554, 220, 40), 16,
+	_online_btn = _make_btn("联 机 模 式", Rect2(530, 564, 220, 34), 15,
 			Color(0.36, 0.62, 0.95))
 	_online_btn.pressed.connect(_on_online_pressed)
 
-	_quit_btn = _make_btn("退 出 游 戏", Rect2(530, 604, 220, 36), 15,
+	_quit_btn = _make_btn("退 出 游 戏", Rect2(530, 602, 220, 30), 14,
 			Color(0.48, 0.48, 0.52))
 	_quit_btn.pressed.connect(func() -> void: get_tree().quit())
 
+	_clear_btn = _make_btn("清 除 存 档", Rect2(762, 637, 104, 24), 12,
+			Color(0.62, 0.42, 0.42))
+	_clear_btn.pressed.connect(_clear_save)
+	_clear_btn.visible = false
+
 	_hero_lb = Label.new()
-	_hero_lb.position = Vector2(530, 650)
+	_hero_lb.position = Vector2(530, 638)
 	_hero_lb.size = Vector2(220, 20)
 	_hero_lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hero_lb.add_theme_font_override("font", _font)
@@ -152,7 +164,7 @@ func _build_ui() -> void:
 	_refresh_hero_label()
 
 	_toast = Label.new()
-	_toast.position = Vector2(390, 676)
+	_toast.position = Vector2(390, 664)
 	_toast.size = Vector2(500, 22)
 	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast.add_theme_font_override("font", _font)
@@ -175,6 +187,39 @@ func _build_ui() -> void:
 func _on_online_pressed() -> void:
 	_toast.text = "联机模式开发中，敬请期待"
 	_toast_t = 2.0
+	_toast.modulate.a = 1.0
+
+
+# ============================================================
+#  存档：继续游戏 / 清除
+# ============================================================
+func _refresh_save_state() -> void:
+	var h := SaveManager.header()
+	if h.is_empty():
+		_continue_btn.disabled = true
+		_continue_btn.text = "继 续 游 戏（无存档）"
+		_clear_btn.visible = false
+		return
+	_continue_btn.disabled = false
+	_continue_btn.text = "继 续 游 戏 · 第 %d 波" % (int(h["wave"]) + 1)
+	_clear_btn.visible = true
+
+
+func _continue_game() -> void:
+	if not SaveManager.request_load():
+		_toast.text = "没有可读取的存档"
+		_toast_t = 2.0
+		_toast.modulate.a = 1.0
+		_refresh_save_state()
+		return
+	get_tree().change_scene_to_file(MAIN_SCENE)
+
+
+func _clear_save() -> void:
+	SaveManager.delete_save()
+	_refresh_save_state()
+	_toast.text = "存档已删除"
+	_toast_t = 1.6
 	_toast.modulate.a = 1.0
 
 
@@ -218,6 +263,7 @@ func _btn_style(bg: Color, border: Color) -> StyleBoxFlat:
 
 
 func _start_game() -> void:
+	SaveManager.clear_pending()   # 开新局：丢弃可能残留的读档请求
 	get_tree().change_scene_to_file(MAIN_SCENE)
 
 

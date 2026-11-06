@@ -14,8 +14,9 @@ var kills := 0          # 觉醒击杀数（3 级定型后开始统计）
 var awakened := false   # 是否已觉醒
 var silence_left := 0.0 # 被沉默剩余时间（Boss EMP / 亡语）：停止攻击
 var silence_cd := 0.0   # 沉默免疫剩余时间
-var cd_speed := 1.0     # 攻速倍率（圣女光环：1.1 = 冷却流逝快 10%）
-var saint_stamp := -100000  # 圣女光环盖章（免伤 5% 凭据）
+var cd_speed := 1.0     # 攻速倍率（圣女光环：随英雄升级，1.06 起）
+var saint_stamp := -100000  # 圣女光环盖章（免伤凭据）
+var saint_guard := 0.0  # 圣女光环免伤比例（随英雄升级，0.03 起，盖章时刷新）
 var max_hp := 100.0
 var hp := 100.0
 var tint := Color.WHITE
@@ -47,9 +48,9 @@ func take_damage(amount: float, attacker = null) -> void:
 		return
 	# 绝对领域：领域内的建筑受击减免（所有建筑都属于塔的范畴）
 	amount *= 1.0 - Board.domain_reduction_at(cell)
-	# 圣女光环：光环内 5% 免伤
+	# 圣女光环：光环内建筑按盖章时的免伤比例减伤
 	if saint_guard_active():
-		amount *= 1.0 - GameConfig.SAINT_REDUCTION
+		amount *= 1.0 - saint_guard
 	hp -= amount
 	_flash = 1.0
 	queue_redraw()
@@ -90,6 +91,11 @@ func branch_cost() -> float:
 func branch_to(_new_kind: int) -> bool:
 	## 分支定型：改 kind / 外观 / 数值，之后不可再升级；默认不可用
 	return false
+
+
+func _apply_branch(_new_kind: int) -> void:
+	## 切换到分支形态（塔 / 墙子类覆写；读档还原形态时也走这里）
+	pass
 
 
 func can_retrofit() -> bool:
@@ -189,6 +195,55 @@ func _destroy() -> void:
 	Board.unregister_building(self)
 	_spawn_fx()
 	queue_free()
+
+
+# ============================================================
+#  存档（局内存档只在波次边界写入，建筑按“类型 + 等级”重建数值）
+# ============================================================
+func to_save() -> Dictionary:
+	return {
+		"kind": kind,
+		"cell": [cell.x, cell.y],
+		"level": level,
+		"max_level": max_level,
+		"hp": hp,
+		"max_hp": max_hp,
+		"invested": invested,
+		"kills": kills,
+		"awakened": awakened,
+		"barricade": barricade,
+		"extra": _save_extra(),
+	}
+
+
+func restore_from(d: Dictionary) -> void:
+	## 恢复顺序与游戏内一致：先补齐升级成长，再切分支形态（分支数值由 _apply_branch 重算）
+	var target_kind := int(d.get("kind", kind))
+	var base_kind := GameConfig.base_kind(target_kind)
+	var target_lv := int(d.get("level", 1))
+	while level < target_lv:
+		level += 1
+		_on_upgraded()
+	if target_kind != base_kind:
+		_apply_branch(target_kind)
+	level = target_lv
+	max_level = int(d.get("max_level", max_level))
+	hp = float(d.get("hp", hp))
+	max_hp = float(d.get("max_hp", max_hp))
+	invested = float(d.get("invested", invested))
+	kills = int(d.get("kills", 0))
+	awakened = bool(d.get("awakened", false))
+	_restore_extra(d.get("extra", {}))
+	queue_redraw()
+
+
+## 子类额外状态（灵魂 / 冷却 / 矿脉计时等），默认无
+func _save_extra() -> Dictionary:
+	return {}
+
+
+func _restore_extra(_d: Dictionary) -> void:
+	pass
 
 
 func _spawn_fx() -> void:

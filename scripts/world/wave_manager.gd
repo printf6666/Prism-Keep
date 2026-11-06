@@ -89,10 +89,26 @@ func _on_cleared() -> void:
 	wave_cleared.emit(wave)
 	if wave >= GameConfig.TOTAL_WAVES:
 		state = St.DONE
+		# 通关星辉奖励：先入账再结算，让结算界面能展示数额
+		GameState.last_soul_gain = GameConfig.SOUL_WIN_BONUS
+		MetaManager.add_souls(GameConfig.SOUL_WIN_BONUS)
 		GameState.finish(true)
 	else:
 		state = St.PREP
 		prep_left = GameConfig.PREP_TIME
+		SaveManager.autosave()   # 波次边界自动存档：本波已清空，下一波尚未开始
+
+
+## 读档：直接进入「第 w 波已清空、准备迎战 w + 1 波」的状态
+func restore(w: int) -> void:
+	_active = true
+	wave = w
+	state = St.PREP
+	prep_left = GameConfig.PREP_TIME if w > 0 else GameConfig.FIRST_PREP
+	_queue.clear()
+	_elapsed = 0.0
+	GameState.set_wave(w)
+	prep_tick.emit(prep_left)
 
 
 # ============================================================

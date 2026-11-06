@@ -43,6 +43,7 @@ var affix_shop_open := false
 var cannon_dmg_mul := 1.0   # 词条 1：炮塔系伤害倍率
 var arrow_haste := 1.0      # 词条 3：箭塔系攻速倍率（冷却流逝）
 var effect_mul := 1.0       # 词条 4：寒冰 / 喷火特效强度倍率
+var last_soul_gain := 0     # 本局获得的星辉奖励（通关结算展示用）
 
 
 func reset() -> void:
@@ -65,6 +66,7 @@ func reset() -> void:
 	cannon_dmg_mul = 1.0
 	arrow_haste = 1.0
 	effect_mul = 1.0
+	last_soul_gain = 0
 	gold_changed.emit(gold)
 	base_changed.emit(base_hp, base_hp_max)
 	wave_changed.emit(wave, total_waves)
@@ -97,6 +99,27 @@ func add_skill_points(v: int) -> void:
 
 func buff_level(i: int) -> int:
 	return buff_levels[i]
+
+
+func recompute_bonuses() -> void:
+	## 按当前 buff_levels / affix_levels 重算全部派生倍率（读档与购买后共用同一套公式）
+	building_dmg_mul = 1.0 + 0.1 * float(buff_levels[0])
+	wall_hp_mul = 1.0 + 0.2 * float(buff_levels[1]) + 0.2 * float(affix_levels[1])
+	mine_income_bonus = float(buff_levels[2]) * 0.5
+	burn_bonus = float(buff_levels[3]) * 0.005
+	cannon_dmg_mul = 1.0 + 0.15 * float(affix_levels[0])
+	arrow_haste = 1.0 + 0.1 * float(affix_levels[2])
+	effect_mul = 1.0 + 0.2 * float(affix_levels[3])
+
+
+func broadcast() -> void:
+	## 读档后一次性刷新界面（UI 只监听信号，不轮询这些数值）
+	gold_changed.emit(gold)
+	base_changed.emit(base_hp, base_hp_max)
+	wave_changed.emit(wave, total_waves)
+	skill_changed.emit(skill_points)
+	essence_changed.emit(essence)
+	affix_changed.emit()
 
 
 func has_dire_straits() -> bool:

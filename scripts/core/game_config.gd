@@ -210,6 +210,26 @@ static func awaken_family(kind: int) -> int:
 static func awaken_def(kind: int) -> Dictionary:
 	return AWAKEN.get(awaken_family(kind), {})
 
+
+## 任意形态（含围墙 / 路障分支）→ 家族基础塔；读档时据此判断是否需要走分支还原
+static func base_kind(kind: int) -> int:
+	match kind:
+		Build.TOWER_RAPID, Build.TOWER_RANGE:
+			return Build.TOWER
+		Build.FROST_STORM, Build.FROST_BEAM:
+			return Build.FROST
+		Build.CANNON_HEAVY, Build.CANNON_MORTAR:
+			return Build.CANNON
+		Build.FLAME_BLAZE, Build.MAGMA:
+			return Build.FLAME
+		Build.DEATH_SILO, Build.DEATH_FERRY:
+			return Build.DEATH
+		Build.WALL_DOMAIN, Build.WALL_MEMORY:
+			return Build.WALL
+		Build.BARRICADE_TURTLE, Build.BARRICADE_THORNS:
+			return Build.BARRICADE
+	return kind
+
 # ---------------- 仇恨值机制 ----------------
 const AGGRO_SCAN := 10                # 仇恨扫描的路径步数上限（BFS）
 const AGGRO_BASE := 4.0               # 大本营的仇恨权重（与武器塔同级）
@@ -305,22 +325,44 @@ static func build_def(kind: int) -> Dictionary:
 
 
 # ---------------- 英雄（玩家角色） ----------------
+## 技能数值不再写死在这里：全部走 HERO_UPGRADES 的成长线（0 级 = 削过的新基础值）
 const HEROES := {
-	"flame_fist": {"name": "炎拳", "color": Color(0.90, 0.35, 0.15), "skill_cd": 180.0,
-		"active": true, "desc": "主动 [Q]：全场敌人被点燃并陷入易伤（受到的伤害 ×2），持续 15 秒。冷却 3 分钟"},
-	"forest_lord": {"name": "森之主", "color": Color(0.40, 0.80, 0.35), "skill_cd": 300.0,
-		"active": true, "desc": "主动 [Q]：立刻在身边部署 4 座植物炮塔（单发 12 / 0.8s，射程 4 格），持续 60 秒。冷却 5 分钟"},
-	"saintess": {"name": "圣女", "color": Color(0.95, 0.85, 0.50), "skill_cd": 0.0,
-		"active": false, "desc": "被动：以自身为中心 5×5 内的塔攻速 +10%、每秒恢复 2 点生命、5% 免伤"},
+	"flame_fist": {"name": "炎拳", "color": Color(0.90, 0.35, 0.15), "active": true,
+		"desc": "主动 [Q]：全场敌人点燃并陷入易伤。易伤强度 / 时长 / 冷却可用星辉在局外强化"},
+	"forest_lord": {"name": "森之主", "color": Color(0.40, 0.80, 0.35), "active": true,
+		"desc": "主动 [Q]：在身边部署 4 座植物炮塔协防一段时间。火力 / 驻留 / 冷却可用星辉在局外强化"},
+	"saintess": {"name": "圣女", "color": Color(0.95, 0.85, 0.50), "active": false,
+		"desc": "被动：以自身为中心 5×5 内的塔获得攻速、回血与免伤。强度可用星辉在局外强化"},
 }
 
-const PLANT_DAMAGE := 12.0            # 植物炮塔单发伤害
-const PLANT_INTERVAL := 0.8           # 植物炮塔射击间隔（秒）
-const PLANT_RANGE := 4.0              # 植物炮塔射程（格）
-const PLANT_LIFETIME := 60.0          # 植物炮塔存在时长（秒）
-const SAINT_REGEN := 2.0              # 圣女光环：每秒恢复生命
-const SAINT_HASTE := 1.1              # 圣女光环：攻速加成（冷却流逝倍率）
-const SAINT_REDUCTION := 0.05         # 圣女光环：免伤比例
+const PLANT_INTERVAL := 0.8           # 植物炮塔射击间隔（秒，不参与升级）
+const PLANT_RANGE := 4.0              # 植物炮塔射程（格，不参与升级）
+
+# ---------------- 局外养成：星辉 / 英雄升级 ----------------
+## 星辉：局外货币 —— 击杀 Boss 与通关获得，入账立刻写盘（user://meta.json），跨局永久
+const SOUL_PER_BOSS := 5              # 击杀 Boss 获得星辉
+const SOUL_WIN_BONUS := 50            # 通关 100 波的额外星辉
+const HERO_UPGRADE_COST := 12         # 英雄升级费用 = 12 ×（当前级 + 1）
+## 英雄升级成长线：base = 0 级基础值（较旧版数值整体下调），step = 每级增量，max_lv = 5
+##   满级后不低于旧版数值：炎拳 ×2.0 / 17 秒 / 180 秒；森之主 16.5 单发 / 70 秒 / 300 秒
+##   圣女的攻速与免伤以百分点存储（用时 ÷100）
+const HERO_UPGRADES := {
+	"flame_fist": [
+		{"name": "易伤强度", "base": 1.5, "step": 0.1, "max_lv": 5, "fmt": "受伤 ×%.1f"},
+		{"name": "持续时长", "base": 12.0, "step": 1.0, "max_lv": 5, "fmt": "持续 %.0f 秒"},
+		{"name": "技能冷却", "base": 210.0, "step": -6.0, "max_lv": 5, "fmt": "冷却 %.0f 秒"},
+	],
+	"forest_lord": [
+		{"name": "植物火力", "base": 9.0, "step": 1.5, "max_lv": 5, "fmt": "单发 %.1f"},
+		{"name": "驻留时长", "base": 45.0, "step": 5.0, "max_lv": 5, "fmt": "驻留 %.0f 秒"},
+		{"name": "技能冷却", "base": 360.0, "step": -12.0, "max_lv": 5, "fmt": "冷却 %.0f 秒"},
+	],
+	"saintess": [
+		{"name": "光环攻速", "base": 6.0, "step": 2.0, "max_lv": 5, "fmt": "攻速 +%.0f%%"},
+		{"name": "光环回血", "base": 1.5, "step": 0.5, "max_lv": 5, "fmt": "回复 %.1f/秒"},
+		{"name": "光环免伤", "base": 3.0, "step": 1.0, "max_lv": 5, "fmt": "免伤 %.0f%%"},
+	],
+}
 
 
 ## 不会攻击的建筑（其余定义默认视为会攻击的塔）

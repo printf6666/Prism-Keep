@@ -42,7 +42,8 @@ var dire := false          # 水深火热：减速 × 岩浆同时生效 → 负
 var lava_stamp := -100000  # 最近一次身处岩浆的时间戳（岩浆池每 0.5s 盖章）
 var burn_source = null     # 点燃来源（灼烧击杀归属，觉醒养成）
 var broken_left := 0.0     # 破甲剩余时间（箭塔觉醒）：受到的伤害 +25%
-var vuln_left := 0.0       # 易伤剩余时间（炎拳技能）：受到的伤害 ×2
+var vuln_left := 0.0       # 易伤剩余时间（炎拳技能）：受到的伤害 ×vuln_mul
+var vuln_mul := 1.0        # 易伤强度（炎拳英雄升级线，0 级为 ×1.5）
 var armor_left := 0.0      # 召唤物落地减伤剩余时间
 var armor_mul := 1.0       # 减伤期间受伤倍率
 var last_attacker = null   # 最近一次攻击来源（觉醒击杀归属）
@@ -119,11 +120,12 @@ func apply_break(duration: float) -> void:
 	queue_redraw()
 
 
-func apply_vuln(duration: float) -> void:
-	## 被炎拳之怒命中：受到的所有伤害 ×2
+func apply_vuln(duration: float, mul := 2.0) -> void:
+	## 被炎拳之怒命中：受到的所有伤害 ×mul（强度随英雄升级成长）
 	if dead:
 		return
 	vuln_left = maxf(vuln_left, duration)
+	vuln_mul = maxf(vuln_mul, mul)
 	queue_redraw()
 
 
@@ -188,6 +190,8 @@ func _process(delta: float) -> void:
 		broken_left = maxf(0.0, broken_left - delta)
 	if vuln_left > 0.0:
 		vuln_left = maxf(0.0, vuln_left - delta)
+		if vuln_left <= 0.0:
+			vuln_mul = 1.0   # 易伤结束：强度回位
 	if armor_left > 0.0:
 		armor_left = maxf(0.0, armor_left - delta)
 
@@ -441,9 +445,9 @@ func take_damage(amount: float, _attacker = null, from_burn := false) -> void:
 	# 破甲（箭塔觉醒）：受到的伤害 +25%
 	if broken_left > 0.0:
 		amount *= 1.25
-	# 易伤（炎拳之怒）：受到的伤害 ×2
+	# 易伤（炎拳之怒）：受到的伤害 ×易伤强度（英雄升级线）
 	if vuln_left > 0.0:
-		amount *= 2.0
+		amount *= vuln_mul
 	if _attacker != null:
 		last_attacker = _attacker
 	hp -= amount
@@ -460,6 +464,7 @@ func _die() -> void:
 		"boss":
 			GameState.add_skill_points(GameConfig.SP_BOSS)
 			GameState.add_essence(GameConfig.ESSENCE_BOSS)
+			MetaManager.add_souls(GameConfig.SOUL_PER_BOSS)   # 局外货币：星辉，立即入账
 		"tank":
 			GameState.add_skill_points(GameConfig.SP_ELITE)
 			GameState.add_essence(GameConfig.ESSENCE_ELITE)

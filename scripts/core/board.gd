@@ -194,6 +194,21 @@ func reset() -> void:
 	rebuild()
 
 
+## 矿山布局存档：格子索引表（读档时原样还原，金矿产金倍率才正确）
+func export_ores() -> Dictionary:
+	return {"ores": ores.keys(), "rich": rich_ores.keys()}
+
+
+func import_ores(d: Dictionary) -> void:
+	ores.clear()
+	rich_ores.clear()
+	for i in d.get("ores", []):
+		ores[int(i)] = true
+	for i in d.get("rich", []):
+		rich_ores[int(i)] = true
+	rebuild()
+
+
 ## 每局随机生成矿山格：3 处大金矿（距基地 15 格以外，产金翻倍）+ 20 处普通矿山
 func generate_ores() -> void:
 	ores.clear()

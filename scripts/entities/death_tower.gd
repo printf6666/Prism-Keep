@@ -34,6 +34,23 @@ func _on_upgraded() -> void:
 	_up_pulse = 1.0
 
 
+func _save_extra() -> Dictionary:
+	## 灵魂摆渡者的灵魂进度与已用次数、核弹井冷却都要接着存档继续
+	return {
+		"souls": souls,
+		"_used_charges": _used_charges,
+		"_cd": _cd,
+		"fire_interval": fire_interval,
+	}
+
+
+func _restore_extra(d: Dictionary) -> void:
+	souls = int(d.get("souls", 0))
+	_used_charges = int(d.get("_used_charges", 0))
+	_cd = float(d.get("_cd", 0.0))
+	fire_interval = float(d.get("fire_interval", fire_interval))
+
+
 ## 当前等级对 Boss 的伤害比例（最大生命值）
 func boss_pct() -> float:
 	return GameConfig.DEATH_BOSS_DMG_PCT + GameConfig.DEATH_BOSS_DMG_STEP * float(level - 1)

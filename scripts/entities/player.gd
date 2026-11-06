@@ -12,6 +12,9 @@ var hero_id := ""
 var hero_cd := 0.0
 var _skill_pulse := 0.0
 var _saint_scan := 0.0
+var _saint_haste := 1.0     # 圣女光环：攻速（进场时按英雄升级取定）
+var _saint_regen := 0.0     # 圣女光环：每秒回血
+var _saint_guard := 0.0     # 圣女光环：免伤比例
 
 var _face := -PI * 0.5
 var _bob := 0.0
@@ -25,6 +28,11 @@ func _ready() -> void:
 	hero_id = GameState.hero_id
 	if not GameConfig.HEROES.has(hero_id):
 		hero_id = ""
+	# 圣女光环数值进场取定：局外升级只在开局前变化
+	if hero_id == "saintess":
+		_saint_haste = 1.0 + MetaManager.hero_value("saintess", 0) / 100.0
+		_saint_regen = MetaManager.hero_value("saintess", 1)
+		_saint_guard = MetaManager.hero_value("saintess", 2) / 100.0
 
 
 func _process(delta: float) -> void:
@@ -68,7 +76,7 @@ func near_base() -> bool:
 			and c.y >= GameConfig.BASE_CELL.y - 1 and c.y <= GameConfig.BASE_CELL.y + GameConfig.BASE_SIZE
 
 
-## 圣女被动光环：以玩家为中心 5×5 内的塔——冷却流逝 ×1.1、回血 2/秒、免伤盖章
+	# 圣女被动光环：以玩家为中心 5×5 内的塔——冷却流逝加速、回血、免伤盖章
 func _saint_aura(delta: float) -> void:
 	var pc := Board.cell_of(global_position)
 	var stamp := Time.get_ticks_msec()
@@ -78,9 +86,10 @@ func _saint_aura(delta: float) -> void:
 		var bc: Vector2i = b.cell
 		if absi(bc.x - pc.x) <= 2 and absi(bc.y - pc.y) <= 2:
 			b.saint_stamp = stamp
-			b.cd_speed = GameConfig.SAINT_HASTE
+			b.cd_speed = _saint_haste
+			b.saint_guard = _saint_guard
 			if b.hp > 0.0 and b.hp < b.max_hp:
-				b.hp = minf(b.hp + GameConfig.SAINT_REGEN * delta, b.max_hp)
+				b.hp = minf(b.hp + _saint_regen * delta, b.max_hp)
 		elif b.cd_speed != 1.0:
 			b.cd_speed = 1.0
 
@@ -94,22 +103,26 @@ func _cast_skill() -> void:
 	if hero_cd > 0.0:
 		GameState.notice.emit("%s 冷却中（%d 秒）" % [hero["name"], int(ceil(hero_cd))])
 		return
-	hero_cd = hero["skill_cd"]
+	hero_cd = MetaManager.hero_value(hero_id, 2)   # 冷却也是升级线之一
 	_skill_pulse = 1.0
 
 	match hero_id:
 		"flame_fist":
-			# 炎拳之怒：全场点燃（1%/秒）并易伤（受伤 ×2），持续 15 秒
+			# 炎拳之怒：全场点燃并易伤（倍率 / 时长随英雄升级成长）
+			var vmul := MetaManager.hero_value("flame_fist", 0)
+			var dur := MetaManager.hero_value("flame_fist", 1)
 			for e in get_tree().get_nodes_in_group("enemies"):
 				if e.dead:
 					continue
-				e.apply_vuln(15.0)
-				e.apply_burn(GameConfig.BURN_PCT + GameState.burn_bonus, 15.0, self)
-			GameState.notice.emit("炎拳之怒：全场点燃，敌人易伤（受伤 ×2）15 秒")
+				e.apply_vuln(dur, vmul)
+				e.apply_burn(GameConfig.BURN_PCT + GameState.burn_bonus, dur, self)
+			GameState.notice.emit("炎拳之怒：全场点燃，敌人易伤（受伤 ×%.1f）%d 秒"
+					% [vmul, int(dur)])
 		"forest_lord":
 			# 森之主：在身边部署 4 座植物炮塔（对角优先，被占则用正交格补足）
 			_deploy_plants()
-			GameState.notice.emit("森之主：植物炮塔部署完毕（60 秒）")
+			GameState.notice.emit("森之主：植物炮塔部署完毕（%d 秒）"
+					% int(MetaManager.hero_value("forest_lord", 1)))
 
 
 ## 森之主：部署 4 座植物炮塔（对角优先，占用的格子自动顺延）
